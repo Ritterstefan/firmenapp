@@ -27,8 +27,11 @@ import {
   Upload,
   UserCog,
   UsersRound,
+  LogOut,
 } from "lucide-react";
 
+import { useAuth } from "@/contexts/AuthContext";
+import { restRequest } from "@/lib/supabaseAuth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,7 +57,13 @@ type Site = {
 type PermissionKey = "baustelle" | "gefaehrdung" | "verkehr" | "massnahmen" | "import" | "telefon" | "wiki" | "team" | "aufgaben" | "uebersicht" | "rechte";
 type ImportRow = Record<string, string>;
 
-type Employee = { id: string; name: string; role: string };
+type Employee = { id: string; name: string; role: string; email?: string };
+type ProfileRow = { id: string; display_name: string | null; role: string | null };
+type AppPermissionRow = { user_id: string; permissions: Partial<Record<PermissionKey, boolean>> };
+type SitePermissionRow = { user_id: string; site_id: string; can_view: boolean; can_edit: boolean };
+type ChatPermissionRow = { user_id: string; chat_id: string; can_view: boolean; can_write: boolean };
+type SiteAccess = Record<string, Record<string, { canView: boolean; canEdit: boolean }>>;
+type ChatAccess = Record<string, Record<string, { canView: boolean; canWrite: boolean }>>;
 
 const permissionAreas: { key: PermissionKey; label: string; description: string }[] = [
   { key: "baustelle", label: "Baustellen öffnen", description: "Grunddaten und Baustellenauswahl sehen" },
@@ -432,14 +441,60 @@ const readBufferFile = (file: File) =>
     reader.readAsArrayBuffer(file);
   });
 
+const createInitialSiteAccess = (siteList: Site[], employeeList: Employee[]) =>
+  employeeList.reduce((access, employee) => {
+    access[employee.id] = siteList.reduce((siteAccess, site) => {
+      const limitedWerkstatt = employee.id === "werkstatt" && site.id === "site-innenhof";
+      siteAccess[site.id] = { canView: !limitedWerkstatt, canEdit: employee.id !== "werkstatt" && !limitedWerkstatt };
+      return siteAccess;
+    }, {} as SiteAccess[string]);
+    return access;
+  }, {} as SiteAccess);
+
+const createInitialChatAccess = (siteList: Site[], employeeList: Employee[]) =>
+  employeeList.reduce((access, employee) => {
+    access[employee.id] = {
+      team: { canView: true, canWrite: employee.id !== "werkstatt" },
+      ...siteList.reduce((chatAccess, site) => {
+        const noAccess = employee.id === "werkstatt" && site.id === "site-innenhof";
+        chatAccess[site.id] = { canView: !noAccess, canWrite: !noAccess && employee.id !== "buero" };
+        return chatAccess;
+      }, {} as ChatAccess[string]),
+    };
+    return access;
+  }, {} as ChatAccess);
+
 const Index = () => {
+  const { session, signOut } = useAuth();
+  const signedInEmployee: Employee = {
+    id: session?.user.id ?? "angemeldet",
+    name: String(session?.user.user_metadata?.display_name ?? session?.user.email ?? "Angemeldeter Mitarbeiter"),
+    role: "Angemeldeter Mitarbeiter",
+    email: session?.user.email,
+  };
+
   const [sites, setSites] = useState<Site[]>(initialSites);
   const [activeTab, setActiveTab] = useState("baustelle");
   const [activeSiteId, setActiveSiteId] = useState(initialSites[0].id);
   const [openTreeKey, setOpenTreeKey] = useState(`${initialSites[0].id}-${initialSites[0].trees[0].number}`);
   const [openTreeToolKey, setOpenTreeToolKey] = useState(`${initialSites[0].id}-${initialSites[0].trees[0].number}-lift`);
-  const [activeEmployeeId, setActiveEmployeeId] = useState(employees[0].id);
-  const [employeePermissions, setEmployeePermissions] = useState(initialEmployeePermissions);
+  const [activeEmployeeId, setActiveEmployeeId] = useState(signedInEmployee.id);
+  const [employeeDirectory, setEmployeeDirectory] = useState<Employee[]>([signedInEmployee, ...employees]);
+  const [employeePermissions, setEmployeePermissions] = useState<Record<string, Record<PermissionKey, boolean>>>({
+    ...initialEmployeePermissions,
+    [signedInEmployee.id]: fullPermissions,
+  });
+  const [siteAccess, setSiteAccess] = useState<SiteAccess>(() => ({
+    ...createInitialSiteAccess(initialSites, employees),
+    [signedInEmployee.id]: initialSites.reduce((access, site) => ({ ...access, [site.id]: { canView: true, canEdit: true } }), {} as SiteAccess[string]),
+  }));
+  const [chatAccess, setChatAccess] = useState<ChatAccess>(() => ({
+    ...createInitialChatAccess(initialSites, employees),
+    [signedInEmployee.id]: {
+      team: { canView: true, canWrite: true },
+      ...initialSites.reduce((access, site) => ({ ...access, [site.id]: { canView: true, canWrite: true } }), {} as ChatAccess[string]),
+    },
+  }));
   const [importFeedback, setImportFeedback] = useState("Noch keine Datei importiert.");
   const [contactQuery, setContactQuery] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
@@ -468,9 +523,15 @@ const Index = () => {
     "hvz-4": { start: "07:00", end: "15:00", installed: false, removed: false },
   });
 
-  const activeEmployee = employees.find((employee) => employee.id === activeEmployeeId) ?? employees[0];
-  const canAccess = (permission: PermissionKey) => employeePermissions[activeEmployeeId]?.[permission] ?? false;
-  const activeSite = sites.find((site) => site.id === activeSiteId) ?? sites[0];
+  const activeEmployee = employeeDirectory.find((employee) => employee.id === activeEmployeeId) ?? signedInEmployee;
+  const canAccess = (permission: PermissionKey) => employeePermissions[signedInEmployee.id]?.[permission] ?? false;
+  const canEmployeeAccess = (employeeId: string, permission: PermissionKey) => employeePermissions[employeeId]?.[permission] ?? false;
+  const canViewSite = (siteId: string) => Boolean(siteAccess[signedInEmployee.id]?.[siteId]?.canView || canAccess("rechte"));
+  const canEditSite = (siteId: string) => Boolean(siteAccess[signedInEmployee.id]?.[siteId]?.canEdit || canAccess("rechte"));
+  const canViewChat = (chatId: string) => Boolean(chatAccess[signedInEmployee.id]?.[chatId]?.canView || canAccess("rechte"));
+  const canWriteChat = (chatId: string) => Boolean(chatAccess[signedInEmployee.id]?.[chatId]?.canWrite || canAccess("rechte"));
+  const visibleSites = sites.filter((site) => canViewSite(site.id));
+  const activeSite = visibleSites.find((site) => site.id === activeSiteId) ?? visibleSites[0] ?? sites[0];
 
   const dashboardStats = [
     { label: "Baustellen", value: String(sites.length), icon: HardHat },
@@ -480,15 +541,94 @@ const Index = () => {
   ];
 
   useEffect(() => {
+    setEmployeeDirectory((current) => {
+      const withoutCurrentUser = current.filter((employee) => employee.id !== signedInEmployee.id);
+      return [signedInEmployee, ...withoutCurrentUser];
+    });
+    setActiveEmployeeId(signedInEmployee.id);
+  }, [signedInEmployee.id, signedInEmployee.name, signedInEmployee.email]);
+
+  useEffect(() => {
     if (!canAccess(tabPermissions[activeTab])) {
       const firstAllowedTab = tabItems.find((tab) => canAccess(tabPermissions[tab.value]));
       setActiveTab(firstAllowedTab?.value ?? "baustelle");
     }
-  }, [activeEmployeeId, employeePermissions, activeTab]);
+  }, [signedInEmployee.id, employeePermissions, activeTab]);
+
+  useEffect(() => {
+    if (!canViewSite(activeSiteId) && visibleSites[0]) {
+      openSite(visibleSites[0].id);
+    }
+  }, [activeSiteId, siteAccess, signedInEmployee.id, sites]);
 
   const selectTab = (tab: string) => {
     if (canAccess(tabPermissions[tab])) setActiveTab(tab);
   };
+
+  useEffect(() => {
+    if (!session) return;
+
+    const loadPermissions = async () => {
+      try {
+        const profiles = await restRequest<ProfileRow[]>(session, "profiles?select=id,display_name,role");
+        if (profiles.length) {
+          setEmployeeDirectory((current) => {
+            const profileEmployees = profiles.map((profile) => ({
+              id: profile.id,
+              name: profile.display_name || "Mitarbeiter",
+              role: profile.role || "Mitarbeiter",
+            }));
+            const known = new Map([...employees, ...current, ...profileEmployees].map((employee) => [employee.id, employee]));
+            known.set(signedInEmployee.id, signedInEmployee);
+            return Array.from(known.values());
+          });
+        }
+
+        const appRows = await restRequest<AppPermissionRow[]>(session, "app_permissions?select=user_id,permissions");
+        setEmployeePermissions((current) => {
+          const next = { ...current };
+          if (appRows.length) {
+            Object.keys(next).forEach((employeeId) => {
+              next[employeeId] = { ...next[employeeId], ...(employeeId === signedInEmployee.id ? {} : next[employeeId]) };
+            });
+          }
+          appRows.forEach((row) => {
+            next[row.user_id] = { ...fullPermissions, ...row.permissions };
+          });
+          if (!appRows.some((row) => row.user_id === signedInEmployee.id)) {
+            next[signedInEmployee.id] = appRows.length ? { ...fullPermissions, rechte: false } : fullPermissions;
+          }
+          return next;
+        });
+
+        const siteRows = await restRequest<SitePermissionRow[]>(session, "site_permissions?select=user_id,site_id,can_view,can_edit");
+        if (siteRows.length) {
+          setSiteAccess((current) => {
+            const next = { ...current };
+            siteRows.forEach((row) => {
+              next[row.user_id] = { ...next[row.user_id], [row.site_id]: { canView: row.can_view, canEdit: row.can_edit } };
+            });
+            return next;
+          });
+        }
+
+        const chatRows = await restRequest<ChatPermissionRow[]>(session, "chat_permissions?select=user_id,chat_id,can_view,can_write");
+        if (chatRows.length) {
+          setChatAccess((current) => {
+            const next = { ...current };
+            chatRows.forEach((row) => {
+              next[row.user_id] = { ...next[row.user_id], [row.chat_id]: { canView: row.can_view, canWrite: row.can_write } };
+            });
+            return next;
+          });
+        }
+      } catch {
+        setEmployeePermissions((current) => ({ ...current, [signedInEmployee.id]: fullPermissions }));
+      }
+    };
+
+    void loadPermissions();
+  }, [session, signedInEmployee.id]);
 
   const filteredContacts = useMemo(() => {
     const query = contactQuery.toLowerCase();
@@ -526,19 +666,21 @@ const Index = () => {
   const siteProgress = Math.round(((activeRiskDone + activeNoParkingDone + activeMeasureStats.done + activeInspectionDone) / (riskItems.length + activeSite.noParkingZones.length + activeMeasureStats.total + inspectionsPerSite)) * 100);
 
   const openSite = (siteId: string) => {
-    const site = sites.find((item) => item.id === siteId) ?? sites[0];
+    if (!canViewSite(siteId)) return;
+    const site = sites.find((item) => item.id === siteId) ?? visibleSites[0] ?? sites[0];
+    const firstTreeNumber = site.trees[0]?.number ?? "";
     setActiveSiteId(site.id);
-    setChatScope(site.id);
-    setOpenTreeKey(`${site.id}-${site.trees[0].number}`);
-    setOpenTreeToolKey(`${site.id}-${site.trees[0].number}-lift`);
+    setChatScope(canViewChat(site.id) ? site.id : "team");
+    setOpenTreeKey(`${site.id}-${firstTreeNumber}`);
+    setOpenTreeToolKey(`${site.id}-${firstTreeNumber}-lift`);
     setActiveTab("baustelle");
   };
 
-  const visibleMessages = messages.filter((message) => message.scope === chatScope || message.scope === "team");
+  const visibleMessages = messages.filter((message) => canViewChat(message.scope) && (message.scope === chatScope || message.scope === "team"));
 
   const sendMessage = () => {
     const text = newMessage.trim();
-    if (!text) return;
+    if (!text || !canWriteChat(chatScope)) return;
     setMessages((current) => [
       ...current,
       { id: `msg-${Date.now()}`, scope: chatScope, author: activeEmployee.name, time: "jetzt", text },
@@ -669,14 +811,57 @@ const Index = () => {
     }
   };
 
+  const persistAppPermission = async (employeeId: string, permissions: Record<PermissionKey, boolean>) => {
+    if (!session) return;
+    await restRequest(session, "app_permissions?on_conflict=user_id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ user_id: employeeId, permissions }),
+    }).catch(() => undefined);
+  };
+
+  const persistSitePermission = async (employeeId: string, siteId: string, access: { canView: boolean; canEdit: boolean }) => {
+    if (!session) return;
+    await restRequest(session, "site_permissions?on_conflict=user_id,site_id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ user_id: employeeId, site_id: siteId, can_view: access.canView, can_edit: access.canEdit }),
+    }).catch(() => undefined);
+  };
+
+  const persistChatPermission = async (employeeId: string, chatId: string, access: { canView: boolean; canWrite: boolean }) => {
+    if (!session) return;
+    await restRequest(session, "chat_permissions?on_conflict=user_id,chat_id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ user_id: employeeId, chat_id: chatId, can_view: access.canView, can_write: access.canWrite }),
+    }).catch(() => undefined);
+  };
+
   const togglePermission = (employeeId: string, permission: PermissionKey, checked: boolean) => {
-    setEmployeePermissions((current) => ({
-      ...current,
-      [employeeId]: {
-        ...current[employeeId],
-        [permission]: checked,
-      },
-    }));
+    setEmployeePermissions((current) => {
+      const nextForEmployee = { ...current[employeeId], [permission]: checked } as Record<PermissionKey, boolean>;
+      void persistAppPermission(employeeId, nextForEmployee);
+      return { ...current, [employeeId]: nextForEmployee };
+    });
+  };
+
+  const toggleSitePermission = (employeeId: string, siteId: string, field: "canView" | "canEdit", checked: boolean) => {
+    setSiteAccess((current) => {
+      const currentAccess = current[employeeId]?.[siteId] ?? { canView: false, canEdit: false };
+      const nextAccess = field === "canView" && !checked ? { canView: false, canEdit: false } : { ...currentAccess, [field]: checked, canView: field === "canEdit" && checked ? true : currentAccess.canView };
+      void persistSitePermission(employeeId, siteId, nextAccess);
+      return { ...current, [employeeId]: { ...current[employeeId], [siteId]: nextAccess } };
+    });
+  };
+
+  const toggleChatPermission = (employeeId: string, chatId: string, field: "canView" | "canWrite", checked: boolean) => {
+    setChatAccess((current) => {
+      const currentAccess = current[employeeId]?.[chatId] ?? { canView: false, canWrite: false };
+      const nextAccess = field === "canView" && !checked ? { canView: false, canWrite: false } : { ...currentAccess, [field]: checked, canView: field === "canWrite" && checked ? true : currentAccess.canView };
+      void persistChatPermission(employeeId, chatId, nextAccess);
+      return { ...current, [employeeId]: { ...current[employeeId], [chatId]: nextAccess } };
+    });
   };
 
   return (
@@ -694,18 +879,14 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <label className="hidden text-xs font-black uppercase tracking-[0.16em] text-[#8B252B] md:block">Zugriff</label>
-            <select
-              value={activeEmployeeId}
-              onChange={(event) => setActiveEmployeeId(event.target.value)}
-              className="h-11 rounded-full border border-[#E2DAD5] bg-[#F8F6F3] px-3 text-sm font-bold text-[#1E1E1F] outline-none focus:border-[#8B252B]"
-            >
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>{employee.name}</option>
-              ))}
-            </select>
+            <div className="hidden rounded-full border border-[#E2DAD5] bg-[#F8F6F3] px-4 py-2 text-sm font-bold text-[#1E1E1F] md:block">
+              {signedInEmployee.name}
+            </div>
             <Button className="rounded-full bg-[#8B252B] px-4 text-white shadow-md shadow-[#8B252B]/20 hover:bg-[#741E24]">
               <Phone className="mr-2 h-4 w-4" /> Notfall
+            </Button>
+            <Button onClick={() => void signOut()} variant="outline" className="rounded-full border-[#8B252B]/25 bg-white/70 px-4 text-[#8B252B] hover:bg-[#FFF7F6]">
+              <LogOut className="mr-2 h-4 w-4" /> Abmelden
             </Button>
           </div>
         </header>
@@ -791,7 +972,7 @@ const Index = () => {
                       <div className="min-w-0 flex-1">
                         <p className="font-black text-[#1E1E1F]">Excel-Import für Baumarbeiten</p>
                         <p className="mt-1 text-sm font-semibold leading-6 text-[#6F7178]">{importFeedback}</p>
-                        {canAccess("import") ? (
+                        {canAccess("import") && canEditSite(activeSite.id) ? (
                           <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#8B252B] px-4 py-2 text-sm font-black text-white shadow-md shadow-[#8B252B]/20 hover:bg-[#741E24]">
                             <Upload className="h-4 w-4" /> Datei auswählen
                             <input
@@ -810,7 +991,7 @@ const Index = () => {
                       </div>
                     </div>
                   </div>
-                  {sites.map((site) => {
+                  {visibleSites.map((site) => {
                     const statsForSite = getSiteMeasureStats(site);
                     const isActive = activeSite.id === site.id;
                     return (
@@ -866,7 +1047,7 @@ const Index = () => {
                         const id = `${activeSite.id}-risk-${index}`;
                         return (
                           <label key={id} className="flex cursor-pointer items-start gap-3 rounded-[1.15rem] bg-[#F8F6F3] p-3 text-sm font-semibold leading-5 text-[#303033] transition hover:bg-[#F1ECE8]">
-                            <Checkbox checked={Boolean(riskChecks[id])} onCheckedChange={(checked) => setRiskChecks((current) => ({ ...current, [id]: checked === true }))} className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                            <Checkbox disabled={!canEditSite(activeSite.id)} checked={Boolean(riskChecks[id])} onCheckedChange={(checked) => setRiskChecks((current) => ({ ...current, [id]: checked === true }))} className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
                             <span>{item}</span>
                           </label>
                         );
@@ -898,20 +1079,20 @@ const Index = () => {
                           <div className="mt-3 grid gap-3 sm:grid-cols-2">
                             <label className="text-sm font-bold text-[#6F7178]">
                               Anfang
-                              <Input value={doc?.start ?? ""} onChange={(event) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], start: event.target.value } }))} className="mt-1 h-10 rounded-xl bg-white" placeholder="z. B. 06:30" />
+                              <Input disabled={!canEditSite(activeSite.id)} value={doc?.start ?? ""} onChange={(event) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], start: event.target.value } }))} className="mt-1 h-10 rounded-xl bg-white" placeholder="z. B. 06:30" />
                             </label>
                             <label className="text-sm font-bold text-[#6F7178]">
                               Ende
-                              <Input value={doc?.end ?? ""} onChange={(event) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], end: event.target.value } }))} className="mt-1 h-10 rounded-xl bg-white" placeholder="z. B. 16:30" />
+                              <Input disabled={!canEditSite(activeSite.id)} value={doc?.end ?? ""} onChange={(event) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], end: event.target.value } }))} className="mt-1 h-10 rounded-xl bg-white" placeholder="z. B. 16:30" />
                             </label>
                           </div>
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
                             <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white p-3 text-sm font-bold">
-                              <Checkbox checked={Boolean(doc?.installed)} onCheckedChange={(checked) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], installed: checked === true } }))} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                              <Checkbox disabled={!canEditSite(activeSite.id)} checked={Boolean(doc?.installed)} onCheckedChange={(checked) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], installed: checked === true } }))} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
                               Aufgestellt dokumentiert
                             </label>
                             <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white p-3 text-sm font-bold">
-                              <Checkbox checked={Boolean(doc?.removed)} onCheckedChange={(checked) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], removed: checked === true } }))} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                              <Checkbox disabled={!canEditSite(activeSite.id)} checked={Boolean(doc?.removed)} onCheckedChange={(checked) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], removed: checked === true } }))} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
                               Abgebaut dokumentiert
                             </label>
                           </div>
@@ -972,7 +1153,7 @@ const Index = () => {
                                   const isDone = Boolean(treeMeasureChecks[measure.id]);
                                   return (
                                     <label key={measure.id} className={isDone ? "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#CFE6D6] bg-[#F0FAF3] p-4" : "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4 transition hover:border-[#8B252B]/30"}>
-                                      <Checkbox checked={isDone} onCheckedChange={(checked) => setTreeMeasureChecks((current) => ({ ...current, [measure.id]: checked === true }))} className="mt-1 h-6 w-6 rounded-lg border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                      <Checkbox disabled={!canEditSite(activeSite.id)} checked={isDone} onCheckedChange={(checked) => setTreeMeasureChecks((current) => ({ ...current, [measure.id]: checked === true }))} className="mt-1 h-6 w-6 rounded-lg border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
                                       <span className="min-w-0 flex-1">
                                         <span className={isDone ? "block font-black text-[#28643E] line-through decoration-2" : "block font-black text-[#1E1E1F]"}>{measure.title}</span>
                                         <span className="mt-2 block text-sm font-semibold text-[#6F7178]">Zuständig: {measure.assignedTo}</span>
@@ -1012,7 +1193,7 @@ const Index = () => {
                                             const isDone = Boolean(treeInspectionChecks[id]);
                                             return (
                                               <label key={id} className="flex cursor-pointer items-start gap-3 rounded-xl bg-white p-3 text-sm font-bold leading-5 text-[#303033]">
-                                                <Checkbox checked={isDone} onCheckedChange={(checked) => setTreeInspectionChecks((current) => ({ ...current, [id]: checked === true }))} className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                                <Checkbox disabled={!canEditSite(activeSite.id)} checked={isDone} onCheckedChange={(checked) => setTreeInspectionChecks((current) => ({ ...current, [id]: checked === true }))} className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
                                                 <span>{item}</span>
                                               </label>
                                             );
@@ -1102,8 +1283,8 @@ const Index = () => {
                   <CardTitle className="flex items-center gap-3 text-2xl font-black"><MessageSquare className="h-6 w-6 text-[#8B252B]" /> Teamchat</CardTitle>
                   <p className="text-sm font-semibold text-[#6F7178]">Nachrichten für alle Mitarbeiter oder direkt zur ausgewählten Baustelle.</p>
                   <div className="flex flex-wrap gap-2 pt-2">
-                    <Button onClick={() => setChatScope("team")} variant={chatScope === "team" ? "default" : "outline"} className={chatScope === "team" ? "rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]" : "rounded-full border-[#8B252B]/25"}>Alle Mitarbeiter</Button>
-                    {sites.map((site) => (
+                    <Button disabled={!canViewChat("team")} onClick={() => setChatScope("team")} variant={chatScope === "team" ? "default" : "outline"} className={chatScope === "team" ? "rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]" : "rounded-full border-[#8B252B]/25"}>Alle Mitarbeiter</Button>
+                    {visibleSites.filter((site) => canViewChat(site.id)).map((site) => (
                       <Button key={site.id} onClick={() => setChatScope(site.id)} variant={chatScope === site.id ? "default" : "outline"} className={chatScope === site.id ? "rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]" : "rounded-full border-[#8B252B]/25"}>{site.name.replace("Baustelle ", "")}</Button>
                     ))}
                   </div>
@@ -1121,8 +1302,8 @@ const Index = () => {
                     ))}
                   </div>
                   <div className="flex gap-2 rounded-[1.5rem] bg-[#F8F6F3] p-2">
-                    <Input value={newMessage} onChange={(event) => setNewMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") sendMessage(); }} placeholder="Nachricht an Team oder Baustelle schreiben..." className="h-12 rounded-2xl border-0 bg-white text-base" />
-                    <Button onClick={sendMessage} className="h-12 rounded-2xl bg-[#8B252B] px-4 text-white hover:bg-[#741E24]"><Send className="h-5 w-5" /></Button>
+                    <Input disabled={!canWriteChat(chatScope)} value={newMessage} onChange={(event) => setNewMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") sendMessage(); }} placeholder={canWriteChat(chatScope) ? "Nachricht an Team oder Baustelle schreiben..." : "Schreibrecht für diesen Chat fehlt"} className="h-12 rounded-2xl border-0 bg-white text-base" />
+                    <Button disabled={!canWriteChat(chatScope)} onClick={sendMessage} className="h-12 rounded-2xl bg-[#8B252B] px-4 text-white hover:bg-[#741E24]"><Send className="h-5 w-5" /></Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1165,36 +1346,91 @@ const Index = () => {
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-3 text-2xl font-black"><UserCog className="h-6 w-6 text-[#8B252B]" /> Zugriffsrechte je Mitarbeiter</CardTitle>
-                  <p className="text-sm font-semibold text-[#6F7178]">Lege fest, welche Bereiche einzelne Mitarbeiter sehen oder bearbeiten dürfen. Die Auswahl oben simuliert den aktuell angemeldeten Mitarbeiter.</p>
+                  <p className="text-sm font-semibold text-[#6F7178]">Lege allgemeine App-Rechte sowie einzelne Baustellen- und Chatfreigaben je Mitarbeiter fest. Die Rechte werden zusätzlich in Supabase gespeichert.</p>
                 </CardHeader>
                 <CardContent className="grid gap-4">
-                  {employees.map((employee) => (
+                  {employeeDirectory.map((employee) => (
                     <article key={employee.id} className="rounded-[1.75rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4">
                       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <h3 className="text-xl font-black text-[#1E1E1F]">{employee.name}</h3>
-                          <p className="text-sm font-semibold text-[#6F7178]">{employee.role}</p>
+                          <p className="text-sm font-semibold text-[#6F7178]">{employee.role}{employee.email ? ` · ${employee.email}` : ""}</p>
                         </div>
-                        <Badge className="rounded-full bg-white text-[#5A1B20] hover:bg-white">{permissionAreas.filter((area) => employeePermissions[employee.id]?.[area.key]).length}/{permissionAreas.length} Rechte</Badge>
+                        <Badge className="rounded-full bg-white text-[#5A1B20] hover:bg-white">{permissionAreas.filter((area) => canEmployeeAccess(employee.id, area.key)).length}/{permissionAreas.length} App-Rechte</Badge>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {permissionAreas.map((area) => {
-                          const isProtectedSelfLock = employee.id === activeEmployeeId && area.key === "rechte";
-                          return (
-                            <label key={area.key} className="flex cursor-pointer items-start gap-3 rounded-[1.15rem] bg-white p-3 text-sm font-semibold leading-5 text-[#303033] shadow-sm">
-                              <Checkbox
-                                checked={Boolean(employeePermissions[employee.id]?.[area.key])}
-                                disabled={isProtectedSelfLock}
-                                onCheckedChange={(checked) => togglePermission(employee.id, area.key, checked === true)}
-                                className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B] disabled:opacity-40"
-                              />
-                              <span>
-                                <span className="block font-black">{area.label}</span>
-                                <span className="mt-1 block text-xs font-semibold text-[#6F7178]">{area.description}</span>
-                              </span>
-                            </label>
-                          );
-                        })}
+
+                      <div className="grid gap-5">
+                        <div>
+                          <p className="mb-2 text-sm font-black uppercase tracking-[0.16em] text-[#8B252B]">Allgemeine Bereiche</p>
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {permissionAreas.map((area) => {
+                              const isProtectedSelfLock = employee.id === signedInEmployee.id && area.key === "rechte";
+                              return (
+                                <label key={area.key} className="flex cursor-pointer items-start gap-3 rounded-[1.15rem] bg-white p-3 text-sm font-semibold leading-5 text-[#303033] shadow-sm">
+                                  <Checkbox
+                                    checked={Boolean(employeePermissions[employee.id]?.[area.key])}
+                                    disabled={isProtectedSelfLock}
+                                    onCheckedChange={(checked) => togglePermission(employee.id, area.key, checked === true)}
+                                    className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B] disabled:opacity-40"
+                                  />
+                                  <span>
+                                    <span className="block font-black">{area.label}</span>
+                                    <span className="mt-1 block text-xs font-semibold text-[#6F7178]">{area.description}</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="mb-2 text-sm font-black uppercase tracking-[0.16em] text-[#8B252B]">Einzelne Baustellen</p>
+                          <div className="grid gap-2 md:grid-cols-2">
+                            {sites.map((site) => {
+                              const access = siteAccess[employee.id]?.[site.id] ?? { canView: false, canEdit: false };
+                              return (
+                                <div key={site.id} className="rounded-[1.15rem] bg-white p-3 shadow-sm">
+                                  <p className="font-black text-[#1E1E1F]">{site.name}</p>
+                                  <p className="text-xs font-semibold text-[#6F7178]">{site.address}</p>
+                                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    <label className="flex cursor-pointer items-center gap-2 text-sm font-bold">
+                                      <Checkbox checked={access.canView} onCheckedChange={(checked) => toggleSitePermission(employee.id, site.id, "canView", checked === true)} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                      sehen
+                                    </label>
+                                    <label className="flex cursor-pointer items-center gap-2 text-sm font-bold">
+                                      <Checkbox checked={access.canEdit} onCheckedChange={(checked) => toggleSitePermission(employee.id, site.id, "canEdit", checked === true)} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                      bearbeiten
+                                    </label>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="mb-2 text-sm font-black uppercase tracking-[0.16em] text-[#8B252B]">Einzelne Chats</p>
+                          <div className="grid gap-2 md:grid-cols-2">
+                            {[{ id: "team", name: "Alle Mitarbeiter" }, ...sites.map((site) => ({ id: site.id, name: site.name }))].map((chat) => {
+                              const access = chatAccess[employee.id]?.[chat.id] ?? { canView: false, canWrite: false };
+                              return (
+                                <div key={chat.id} className="rounded-[1.15rem] bg-white p-3 shadow-sm">
+                                  <p className="font-black text-[#1E1E1F]">{chat.name}</p>
+                                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    <label className="flex cursor-pointer items-center gap-2 text-sm font-bold">
+                                      <Checkbox checked={access.canView} onCheckedChange={(checked) => toggleChatPermission(employee.id, chat.id, "canView", checked === true)} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                      lesen
+                                    </label>
+                                    <label className="flex cursor-pointer items-center gap-2 text-sm font-bold">
+                                      <Checkbox checked={access.canWrite} onCheckedChange={(checked) => toggleChatPermission(employee.id, chat.id, "canWrite", checked === true)} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                      schreiben
+                                    </label>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     </article>
                   ))}
@@ -1205,7 +1441,7 @@ const Index = () => {
 
           <TabsContent value="uebersicht" className="mt-5">
             <div className="grid gap-5 lg:grid-cols-2">
-              {sites.map((site) => {
+              {visibleSites.map((site) => {
                 const statsForSite = getSiteMeasureStats(site);
                 const riskDone = riskItems.filter((_, index) => riskChecks[`${site.id}-risk-${index}`]).length;
                 const noParkingDone = site.noParkingZones.filter((zone) => noParkingDocs[zone.id]?.installed && noParkingDocs[zone.id]?.removed).length;
