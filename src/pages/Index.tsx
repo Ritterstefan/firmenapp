@@ -169,6 +169,27 @@ const trees = [
   },
 ];
 
+const treeInspectionSections = [
+  {
+    id: "lift",
+    title: "Hubsteigerkontrolle je Baum",
+    icon: Truck,
+    items: ["Standplatz am Baum geeignet", "Abstützung und Untergrund geprüft", "Arbeitsbereich im Korb erreichbar", "Notablass und Rettungsweg bekannt"],
+  },
+  {
+    id: "habitat",
+    title: "Habitatsprüfung je Baum",
+    icon: Leaf,
+    items: ["Höhlen, Spalten und Rindenabplatzungen kontrolliert", "Nester und Brutaktivität ausgeschlossen", "Fledermaus- oder Tierhinweise bewertet", "Freigabe vor Schnitt dokumentiert"],
+  },
+];
+
+const noParkingZones = [
+  { id: "hvz-1", title: "Halteverbot Zufahrt Nord", location: "Musterallee 12–18", length: "24 m" },
+  { id: "hvz-2", title: "Halteverbot Parkstreifen", location: "gegenüber Musterallee 20", length: "18 m" },
+  { id: "hvz-3", title: "Halteverbot Ladezone", location: "Innenhof-Einfahrt", length: "12 m" },
+];
+
 const stats = [
   { label: "aktive Baustellen", value: "7", icon: HardHat },
   { label: "Wiki-Dokumente", value: "48", icon: BookOpen },
@@ -183,6 +204,14 @@ const Index = () => {
   const [wikiQuery, setWikiQuery] = useState("");
   const [treeMeasureChecks, setTreeMeasureChecks] = useState<Record<string, boolean>>({
     "b016-1": true,
+  });
+  const [treeInspectionChecks, setTreeInspectionChecks] = useState<Record<string, boolean>>({
+    "B-016-habitat-0": true,
+  });
+  const [noParkingDocs, setNoParkingDocs] = useState<Record<string, { start: string; end: string; installed: boolean; removed: boolean }>>({
+    "hvz-1": { start: "06:30", end: "16:30", installed: true, removed: false },
+    "hvz-2": { start: "07:00", end: "15:30", installed: false, removed: false },
+    "hvz-3": { start: "07:15", end: "14:00", installed: false, removed: false },
   });
   const [checks, setChecks] = useState<Record<string, boolean>>({
     "risk-0": true,
@@ -213,6 +242,9 @@ const Index = () => {
     0,
   );
   const treeMeasureProgress = Math.round((completedTreeMeasures / totalTreeMeasures) * 100);
+  const totalTreeInspections = trees.length * treeInspectionSections.reduce((sum, section) => sum + section.items.length, 0);
+  const completedTreeInspections = Object.values(treeInspectionChecks).filter(Boolean).length;
+  const noParkingCompleted = noParkingZones.filter((zone) => noParkingDocs[zone.id]?.installed && noParkingDocs[zone.id]?.removed).length;
 
   return (
     <main className="min-h-screen bg-[#F5F2EE] text-[#1E1E1F]">
@@ -312,9 +344,51 @@ const Index = () => {
                       <CalendarDays className="h-5 w-5 text-[#8B252B]" />
                       <div><p className="font-bold">Einsatzdatum</p><p className="text-sm text-[#6F7178]">Heute · 07:30–16:00 Uhr</p></div>
                     </div>
-                    <div className="flex items-center gap-3 rounded-[1.35rem] border border-[#E4DEDA] p-4">
-                      <CarFront className="h-5 w-5 text-[#8B252B]" />
-                      <div><p className="font-bold">Halteverbotszone</p><p className="text-sm text-[#6F7178]">24 m eingerichtet · Fotobeleg vorhanden</p></div>
+                    <div className="rounded-[1.35rem] border border-[#E4DEDA] p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <CarFront className="h-5 w-5 text-[#8B252B]" />
+                          <div><p className="font-bold">Halteverbote einzeln dokumentieren</p><p className="text-sm text-[#6F7178]">{noParkingCompleted}/{noParkingZones.length} vollständig abgeschlossen</p></div>
+                        </div>
+                      </div>
+                      <div className="grid gap-3">
+                        {noParkingZones.map((zone) => {
+                          const doc = noParkingDocs[zone.id];
+                          return (
+                            <div key={zone.id} className="rounded-[1.15rem] bg-[#F8F6F3] p-3">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-black text-[#1E1E1F]">{zone.title}</p>
+                                  <p className="text-sm font-semibold text-[#6F7178]">{zone.location} · {zone.length}</p>
+                                </div>
+                                <Badge className={doc?.installed && doc?.removed ? "rounded-full bg-[#E9F4ED] text-[#28643E] hover:bg-[#E9F4ED]" : "rounded-full bg-[#FFF2D9] text-[#7A4F00] hover:bg-[#FFF2D9]"}>
+                                  {doc?.installed && doc?.removed ? "fertig dokumentiert" : "Dokumentation offen"}
+                                </Badge>
+                              </div>
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                <label className="text-sm font-bold text-[#6F7178]">
+                                  Anfang
+                                  <Input value={doc?.start ?? ""} onChange={(event) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], start: event.target.value } }))} className="mt-1 h-10 rounded-xl bg-white" placeholder="z. B. 06:30" />
+                                </label>
+                                <label className="text-sm font-bold text-[#6F7178]">
+                                  Ende
+                                  <Input value={doc?.end ?? ""} onChange={(event) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], end: event.target.value } }))} className="mt-1 h-10 rounded-xl bg-white" placeholder="z. B. 16:30" />
+                                </label>
+                              </div>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white p-3 text-sm font-bold">
+                                  <Checkbox checked={Boolean(doc?.installed)} onCheckedChange={(checked) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], installed: checked === true } }))} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                  Aufgestellt dokumentiert
+                                </label>
+                                <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-white p-3 text-sm font-bold">
+                                  <Checkbox checked={Boolean(doc?.removed)} onCheckedChange={(checked) => setNoParkingDocs((current) => ({ ...current, [zone.id]: { ...current[zone.id], removed: checked === true } }))} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                  Abgebaut dokumentiert
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -417,9 +491,10 @@ const Index = () => {
                   <div className="mt-4 rounded-[1.5rem] bg-[#F5F2EE] p-4">
                     <div className="mb-2 flex items-center justify-between text-sm font-bold">
                       <span>Mitarbeiter-Abarbeitung</span>
-                      <span className="text-[#8B252B]">{completedTreeMeasures}/{totalTreeMeasures} erledigt</span>
+                      <span className="text-[#8B252B]">{completedTreeMeasures}/{totalTreeMeasures} Maßnahmen erledigt</span>
                     </div>
                     <Progress value={treeMeasureProgress} className="h-3 rounded-full" />
+                    <p className="mt-3 text-sm font-semibold text-[#6F7178]">Hubsteiger- und Habitatsprüfungen: {completedTreeInspections}/{totalTreeInspections} Prüfpunkte erledigt</p>
                   </div>
                 </CardHeader>
                 <CardContent className="grid gap-4">
@@ -451,20 +526,58 @@ const Index = () => {
                         </button>
 
                         {isOpen && (
-                          <div className="mt-4 grid gap-3">
-                            {tree.measures.map((measure) => {
-                              const isDone = Boolean(treeMeasureChecks[measure.id]);
-                              return (
-                                <label key={measure.id} className={isDone ? "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#CFE6D6] bg-[#F0FAF3] p-4" : "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4 transition hover:border-[#8B252B]/30"}>
-                                  <Checkbox checked={isDone} onCheckedChange={(checked) => setTreeMeasureChecks((current) => ({ ...current, [measure.id]: checked === true }))} className="mt-1 h-6 w-6 rounded-lg border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
-                                  <span className="min-w-0 flex-1">
-                                    <span className={isDone ? "block font-black text-[#28643E] line-through decoration-2" : "block font-black text-[#1E1E1F]"}>{measure.title}</span>
-                                    <span className="mt-2 block text-sm font-semibold text-[#6F7178]">Zuständig: {measure.assignedTo}</span>
-                                    <span className="mt-1 block text-sm leading-6 text-[#6F7178]">{measure.note}</span>
-                                  </span>
-                                </label>
-                              );
-                            })}
+                          <div className="mt-4 grid gap-4">
+                            <div className="grid gap-3">
+                              {tree.measures.map((measure) => {
+                                const isDone = Boolean(treeMeasureChecks[measure.id]);
+                                return (
+                                  <label key={measure.id} className={isDone ? "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#CFE6D6] bg-[#F0FAF3] p-4" : "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4 transition hover:border-[#8B252B]/30"}>
+                                    <Checkbox checked={isDone} onCheckedChange={(checked) => setTreeMeasureChecks((current) => ({ ...current, [measure.id]: checked === true }))} className="mt-1 h-6 w-6 rounded-lg border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                    <span className="min-w-0 flex-1">
+                                      <span className={isDone ? "block font-black text-[#28643E] line-through decoration-2" : "block font-black text-[#1E1E1F]"}>{measure.title}</span>
+                                      <span className="mt-2 block text-sm font-semibold text-[#6F7178]">Zuständig: {measure.assignedTo}</span>
+                                      <span className="mt-1 block text-sm leading-6 text-[#6F7178]">{measure.note}</span>
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+
+                            <div className="grid gap-3 xl:grid-cols-2">
+                              {treeInspectionSections.map((section) => {
+                                const sectionDone = section.items.filter((_, index) => treeInspectionChecks[`${tree.number}-${section.id}-${index}`]).length;
+                                return (
+                                  <div key={section.id} className="rounded-[1.35rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4">
+                                    <div className="mb-3 flex items-start justify-between gap-3">
+                                      <div className="flex items-center gap-3">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#8B252B]/10 text-[#8B252B]">
+                                          <section.icon className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                          <p className="font-black text-[#1E1E1F]">{section.title}</p>
+                                          <p className="text-sm font-semibold text-[#6F7178]">{sectionDone}/{section.items.length} bei {tree.number}</p>
+                                        </div>
+                                      </div>
+                                      <Badge className={sectionDone === section.items.length ? "rounded-full bg-[#E9F4ED] text-[#28643E] hover:bg-[#E9F4ED]" : "rounded-full bg-[#FFF2D9] text-[#7A4F00] hover:bg-[#FFF2D9]"}>
+                                        {sectionDone === section.items.length ? "erledigt" : "offen"}
+                                      </Badge>
+                                    </div>
+                                    <div className="grid gap-2">
+                                      {section.items.map((item, index) => {
+                                        const id = `${tree.number}-${section.id}-${index}`;
+                                        const isDone = Boolean(treeInspectionChecks[id]);
+                                        return (
+                                          <label key={id} className="flex cursor-pointer items-start gap-3 rounded-xl bg-white p-3 text-sm font-bold leading-5 text-[#303033]">
+                                            <Checkbox checked={isDone} onCheckedChange={(checked) => setTreeInspectionChecks((current) => ({ ...current, [id]: checked === true }))} className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                            <span>{item}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
                       </article>
