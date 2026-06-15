@@ -135,9 +135,38 @@ const workflowSections = [
 ];
 
 const trees = [
-  { number: "B-014", location: "Zufahrt Nord", task: "Kronenpflege, Totholz entfernen", status: "in Arbeit" },
-  { number: "B-015", location: "Parkstreifen", task: "Lichtraumprofil herstellen", status: "offen" },
-  { number: "B-016", location: "Innenhof", task: "Habitat prüfen, Pflegeschnitt", status: "erledigt" },
+  {
+    number: "B-014",
+    species: "Linde",
+    location: "Zufahrt Nord",
+    priority: "hoch",
+    measures: [
+      { id: "b014-1", title: "Totholz ab 3 cm entfernen", assignedTo: "Kolonne 1", note: "Kronenbereich über Gehweg zuerst bearbeiten." },
+      { id: "b014-2", title: "Kronenpflege nach ZTV-Baumpflege", assignedTo: "Schnittteam", note: "Keine Starkastschnitte ohne Rücksprache." },
+      { id: "b014-3", title: "Lichtraumprofil zur Zufahrt herstellen", assignedTo: "Hubsteigerteam", note: "Mindesthöhe 4,50 m beachten." },
+    ],
+  },
+  {
+    number: "B-015",
+    species: "Ahorn",
+    location: "Parkstreifen",
+    priority: "mittel",
+    measures: [
+      { id: "b015-1", title: "Habitat-Check an Stammhöhlen durchführen", assignedTo: "Baumkontrolle", note: "Vor Schnittbeginn fotografisch dokumentieren." },
+      { id: "b015-2", title: "Lichtraumprofil Gehweg herstellen", assignedTo: "Kolonne 2", note: "Absperrung zur Straße aufrechterhalten." },
+      { id: "b015-3", title: "Schnittgut aufnehmen und Fahrbahn reinigen", assignedTo: "Bodenmannschaft", note: "Abschlussfoto für Büro erstellen." },
+    ],
+  },
+  {
+    number: "B-016",
+    species: "Eiche",
+    location: "Innenhof",
+    priority: "normal",
+    measures: [
+      { id: "b016-1", title: "Habitatfreigabe bestätigen", assignedTo: "Baumkontrolle", note: "Spalten und Höhlen kontrollieren." },
+      { id: "b016-2", title: "Pflegeschnitt im unteren Kronendrittel", assignedTo: "Schnittteam", note: "Schonend schneiden, Zielzustand dokumentieren." },
+    ],
+  },
 ];
 
 const stats = [
@@ -150,6 +179,9 @@ const stats = [
 const Index = () => {
   const [contactQuery, setContactQuery] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
+  const [treeMeasureChecks, setTreeMeasureChecks] = useState<Record<string, boolean>>({
+    "b016-1": true,
+  });
   const [checks, setChecks] = useState<Record<string, boolean>>({
     "risk-0": true,
     "traffic-0": true,
@@ -173,6 +205,12 @@ const Index = () => {
   const totalChecks = workflowSections.reduce((sum, section) => sum + section.items.length, 0);
   const completedChecks = Object.values(checks).filter(Boolean).length;
   const progress = Math.round((completedChecks / totalChecks) * 100);
+  const totalTreeMeasures = trees.reduce((sum, tree) => sum + tree.measures.length, 0);
+  const completedTreeMeasures = trees.reduce(
+    (sum, tree) => sum + tree.measures.filter((measure) => treeMeasureChecks[measure.id]).length,
+    0,
+  );
+  const treeMeasureProgress = Math.round((completedTreeMeasures / totalTreeMeasures) * 100);
 
   return (
     <main className="min-h-screen bg-[#F5F2EE] text-[#1E1E1F]">
@@ -331,7 +369,7 @@ const Index = () => {
                       {contact.tags.map((tag) => <Badge key={tag} variant="secondary" className="rounded-full bg-[#F0ECE8] text-[#5A1B20]">{tag}</Badge>)}
                     </div>
                     <div className="mt-4 flex gap-2">
-                      <Button asChild className="flex-1 rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]"><a href={`tel:${contact.phone.replaceAll(" ", "")}`}><Phone className="mr-2 h-4 w-4" />Anrufen</a></Button>
+                      <Button asChild className="flex-1 rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]"><a href={`tel:${contact.phone.replace(/\s/g, "")}`}><Phone className="mr-2 h-4 w-4" />Anrufen</a></Button>
                       <Button asChild variant="outline" className="flex-1 rounded-full border-[#8B252B]/25"><a href={`mailto:${contact.email}`}><Mail className="mr-2 h-4 w-4" />Mail</a></Button>
                     </div>
                   </article>
@@ -372,16 +410,55 @@ const Index = () => {
             <div className="grid gap-5 lg:grid-cols-3">
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10 lg:col-span-2">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-3 text-2xl font-black"><TreePine className="h-6 w-6 text-[#8B252B]" /> Zu bearbeitende Bäume</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-3">
-                  {trees.map((tree) => (
-                    <div key={tree.number} className="grid gap-3 rounded-[1.5rem] border border-[#E7E0DC] bg-white p-4 sm:grid-cols-[.7fr_1fr_auto] sm:items-center">
-                      <div><p className="text-xl font-black text-[#8B252B]">{tree.number}</p><p className="text-sm font-semibold text-[#6F7178]">{tree.location}</p></div>
-                      <p className="font-semibold">{tree.task}</p>
-                      <Badge className={tree.status === "erledigt" ? "rounded-full bg-[#E9F4ED] text-[#28643E] hover:bg-[#E9F4ED]" : tree.status === "in Arbeit" ? "rounded-full bg-[#FFF2D9] text-[#7A4F00] hover:bg-[#FFF2D9]" : "rounded-full bg-[#F0ECE8] text-[#5A1B20] hover:bg-[#F0ECE8]"}>{tree.status}</Badge>
+                  <CardTitle className="flex items-center gap-3 text-2xl font-black"><TreePine className="h-6 w-6 text-[#8B252B]" /> Maßnahmen je Baum</CardTitle>
+                  <div className="mt-4 rounded-[1.5rem] bg-[#F5F2EE] p-4">
+                    <div className="mb-2 flex items-center justify-between text-sm font-bold">
+                      <span>Mitarbeiter-Abarbeitung</span>
+                      <span className="text-[#8B252B]">{completedTreeMeasures}/{totalTreeMeasures} erledigt</span>
                     </div>
-                  ))}
+                    <Progress value={treeMeasureProgress} className="h-3 rounded-full" />
+                  </div>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  {trees.map((tree) => {
+                    const completedMeasures = tree.measures.filter((measure) => treeMeasureChecks[measure.id]).length;
+                    const isTreeDone = completedMeasures === tree.measures.length;
+                    return (
+                      <article key={tree.number} className="rounded-[1.75rem] border border-[#E7E0DC] bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-2xl font-black text-[#8B252B]">{tree.number}</p>
+                              <Badge className="rounded-full bg-[#F0ECE8] text-[#5A1B20] hover:bg-[#F0ECE8]">{tree.species}</Badge>
+                              <Badge className={isTreeDone ? "rounded-full bg-[#E9F4ED] text-[#28643E] hover:bg-[#E9F4ED]" : "rounded-full bg-[#FFF2D9] text-[#7A4F00] hover:bg-[#FFF2D9]"}>
+                                {isTreeDone ? "Baum erledigt" : "offene Maßnahmen"}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#6F7178]"><MapPin className="h-4 w-4" /> {tree.location}</p>
+                          </div>
+                          <div className="rounded-2xl bg-[#F8F6F3] px-4 py-3 text-sm font-black text-[#1E1E1F]">
+                            {completedMeasures} von {tree.measures.length}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3">
+                          {tree.measures.map((measure) => {
+                            const isDone = Boolean(treeMeasureChecks[measure.id]);
+                            return (
+                              <label key={measure.id} className={isDone ? "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#CFE6D6] bg-[#F0FAF3] p-4" : "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4 transition hover:border-[#8B252B]/30"}>
+                                <Checkbox checked={isDone} onCheckedChange={(checked) => setTreeMeasureChecks((current) => ({ ...current, [measure.id]: checked === true }))} className="mt-1 h-6 w-6 rounded-lg border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                <span className="min-w-0 flex-1">
+                                  <span className={isDone ? "block font-black text-[#28643E] line-through decoration-2" : "block font-black text-[#1E1E1F]"}>{measure.title}</span>
+                                  <span className="mt-2 block text-sm font-semibold text-[#6F7178]">Zuständig: {measure.assignedTo}</span>
+                                  <span className="mt-1 block text-sm leading-6 text-[#6F7178]">{measure.note}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </CardContent>
               </Card>
 
