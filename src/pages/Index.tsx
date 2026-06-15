@@ -177,6 +177,8 @@ const stats = [
 ];
 
 const Index = () => {
+  const [activeTab, setActiveTab] = useState("baustelle");
+  const [openTreeNumber, setOpenTreeNumber] = useState("B-014");
   const [contactQuery, setContactQuery] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
   const [treeMeasureChecks, setTreeMeasureChecks] = useState<Record<string, boolean>>({
@@ -252,8 +254,8 @@ const Index = () => {
                   Zentrale Arbeitsplattform für Telefonliste, Wiki, Betriebsanweisungen und den kompletten Baumpflege-Ablauf von der Gefährdungsbeurteilung bis zur Habitatsfreigabe.
                 </p>
                 <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                  <Button className="h-12 rounded-full bg-[#8B252B] px-6 text-white hover:bg-[#741E24]">Baustelle öffnen</Button>
-                  <Button variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
+                  <Button onClick={() => setActiveTab("uebersicht")} className="h-12 rounded-full bg-[#8B252B] px-6 text-white hover:bg-[#741E24]">Maßnahmen öffnen</Button>
+                  <Button onClick={() => setActiveTab("wiki")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
                     Wiki durchsuchen
                   </Button>
                 </div>
@@ -276,7 +278,7 @@ const Index = () => {
           </div>
         </section>
 
-        <Tabs defaultValue="baustelle" className="relative">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="relative">
           <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-[1.75rem] bg-[#E8E5E1] p-2 md:grid-cols-4">
             <TabsTrigger value="baustelle" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Baustelle</TabsTrigger>
             <TabsTrigger value="telefon" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Telefonliste</TabsTrigger>
@@ -411,6 +413,7 @@ const Index = () => {
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10 lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-3 text-2xl font-black"><TreePine className="h-6 w-6 text-[#8B252B]" /> Maßnahmen je Baum</CardTitle>
+                  <p className="text-sm font-semibold text-[#6F7178]">Baum anklicken, Maßnahmen öffnen und direkt als abgearbeitet markieren.</p>
                   <div className="mt-4 rounded-[1.5rem] bg-[#F5F2EE] p-4">
                     <div className="mb-2 flex items-center justify-between text-sm font-bold">
                       <span>Mitarbeiter-Abarbeitung</span>
@@ -423,39 +426,47 @@ const Index = () => {
                   {trees.map((tree) => {
                     const completedMeasures = tree.measures.filter((measure) => treeMeasureChecks[measure.id]).length;
                     const isTreeDone = completedMeasures === tree.measures.length;
+                    const isOpen = openTreeNumber === tree.number;
                     return (
-                      <article key={tree.number} className="rounded-[1.75rem] border border-[#E7E0DC] bg-white p-4 shadow-sm">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-2xl font-black text-[#8B252B]">{tree.number}</p>
+                      <article key={tree.number} className={isOpen ? "rounded-[1.75rem] border border-[#8B252B]/40 bg-white p-4 shadow-md shadow-[#8B252B]/10" : "rounded-[1.75rem] border border-[#E7E0DC] bg-white p-4 shadow-sm transition hover:border-[#8B252B]/30 hover:shadow-md"}>
+                        <button type="button" onClick={() => setOpenTreeNumber(isOpen ? "" : tree.number)} className="flex w-full flex-col gap-3 text-left sm:flex-row sm:items-start sm:justify-between">
+                          <span>
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="text-2xl font-black text-[#8B252B]">{tree.number}</span>
                               <Badge className="rounded-full bg-[#F0ECE8] text-[#5A1B20] hover:bg-[#F0ECE8]">{tree.species}</Badge>
                               <Badge className={isTreeDone ? "rounded-full bg-[#E9F4ED] text-[#28643E] hover:bg-[#E9F4ED]" : "rounded-full bg-[#FFF2D9] text-[#7A4F00] hover:bg-[#FFF2D9]"}>
                                 {isTreeDone ? "Baum erledigt" : "offene Maßnahmen"}
                               </Badge>
-                            </div>
-                            <p className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#6F7178]"><MapPin className="h-4 w-4" /> {tree.location}</p>
-                          </div>
-                          <div className="rounded-2xl bg-[#F8F6F3] px-4 py-3 text-sm font-black text-[#1E1E1F]">
-                            {completedMeasures} von {tree.measures.length}
-                          </div>
-                        </div>
+                            </span>
+                            <span className="mt-1 flex items-center gap-2 text-sm font-semibold text-[#6F7178]"><MapPin className="h-4 w-4" /> {tree.location}</span>
+                          </span>
+                          <span className="flex items-center gap-3">
+                            <span className="rounded-2xl bg-[#F8F6F3] px-4 py-3 text-sm font-black text-[#1E1E1F]">
+                              {completedMeasures} von {tree.measures.length}
+                            </span>
+                            <span className={isOpen ? "flex h-10 w-10 rotate-90 items-center justify-center rounded-full bg-[#8B252B] text-white transition" : "flex h-10 w-10 items-center justify-center rounded-full bg-[#F0ECE8] text-[#8B252B] transition"}>
+                              <ChevronRight className="h-5 w-5" />
+                            </span>
+                          </span>
+                        </button>
 
-                        <div className="mt-4 grid gap-3">
-                          {tree.measures.map((measure) => {
-                            const isDone = Boolean(treeMeasureChecks[measure.id]);
-                            return (
-                              <label key={measure.id} className={isDone ? "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#CFE6D6] bg-[#F0FAF3] p-4" : "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4 transition hover:border-[#8B252B]/30"}>
-                                <Checkbox checked={isDone} onCheckedChange={(checked) => setTreeMeasureChecks((current) => ({ ...current, [measure.id]: checked === true }))} className="mt-1 h-6 w-6 rounded-lg border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
-                                <span className="min-w-0 flex-1">
-                                  <span className={isDone ? "block font-black text-[#28643E] line-through decoration-2" : "block font-black text-[#1E1E1F]"}>{measure.title}</span>
-                                  <span className="mt-2 block text-sm font-semibold text-[#6F7178]">Zuständig: {measure.assignedTo}</span>
-                                  <span className="mt-1 block text-sm leading-6 text-[#6F7178]">{measure.note}</span>
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
+                        {isOpen && (
+                          <div className="mt-4 grid gap-3">
+                            {tree.measures.map((measure) => {
+                              const isDone = Boolean(treeMeasureChecks[measure.id]);
+                              return (
+                                <label key={measure.id} className={isDone ? "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#CFE6D6] bg-[#F0FAF3] p-4" : "flex cursor-pointer items-start gap-3 rounded-[1.25rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4 transition hover:border-[#8B252B]/30"}>
+                                  <Checkbox checked={isDone} onCheckedChange={(checked) => setTreeMeasureChecks((current) => ({ ...current, [measure.id]: checked === true }))} className="mt-1 h-6 w-6 rounded-lg border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                                  <span className="min-w-0 flex-1">
+                                    <span className={isDone ? "block font-black text-[#28643E] line-through decoration-2" : "block font-black text-[#1E1E1F]"}>{measure.title}</span>
+                                    <span className="mt-2 block text-sm font-semibold text-[#6F7178]">Zuständig: {measure.assignedTo}</span>
+                                    <span className="mt-1 block text-sm leading-6 text-[#6F7178]">{measure.note}</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
                       </article>
                     );
                   })}
