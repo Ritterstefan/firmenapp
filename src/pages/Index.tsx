@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BookOpen,
@@ -8,10 +8,12 @@ import {
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
+  FileSpreadsheet,
   FileText,
   HardHat,
   Leaf,
   ListChecks,
+  LockKeyhole,
   Mail,
   MapPin,
   MessageSquare,
@@ -22,6 +24,8 @@ import {
   Siren,
   TreePine,
   Truck,
+  Upload,
+  UserCog,
   UsersRound,
 } from "lucide-react";
 
@@ -32,6 +36,128 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type Measure = { id: string; title: string; assignedTo: string; note: string };
+type Tree = { number: string; species: string; location: string; measures: Measure[] };
+type NoParkingZone = { id: string; title: string; location: string; length: string };
+type Site = {
+  id: string;
+  name: string;
+  address: string;
+  date: string;
+  status: string;
+  crew: string;
+  noParkingZones: NoParkingZone[];
+  trees: Tree[];
+};
+
+type PermissionKey = "baustelle" | "gefaehrdung" | "verkehr" | "massnahmen" | "import" | "telefon" | "wiki" | "team" | "aufgaben" | "uebersicht" | "rechte";
+type ImportRow = Record<string, string>;
+
+type Employee = { id: string; name: string; role: string };
+
+const permissionAreas: { key: PermissionKey; label: string; description: string }[] = [
+  { key: "baustelle", label: "Baustellen öffnen", description: "Grunddaten und Baustellenauswahl sehen" },
+  { key: "gefaehrdung", label: "Gefährdung", description: "Gefährdungsbeurteilung abhaken" },
+  { key: "verkehr", label: "Verkehr & HVZ", description: "Halteverbote dokumentieren" },
+  { key: "massnahmen", label: "Baummaßnahmen", description: "Arbeiten je Baum abarbeiten" },
+  { key: "import", label: "Excel-Import", description: "Baumarbeiten aus Dateien einspielen" },
+  { key: "telefon", label: "Telefonliste", description: "Kontakte anzeigen" },
+  { key: "wiki", label: "Wiki", description: "Arbeitshilfen lesen" },
+  { key: "team", label: "Teamchat", description: "Nachrichten lesen und schreiben" },
+  { key: "aufgaben", label: "Teamaufgaben", description: "Aufgaben anlegen und abhaken" },
+  { key: "uebersicht", label: "Übersicht", description: "Baustellen-Kennzahlen sehen" },
+  { key: "rechte", label: "Rechte verwalten", description: "Zugriffe je Mitarbeiter vergeben" },
+];
+
+const employees: Employee[] = [
+  { id: "helge", name: "Helge Schnirring", role: "Geschäftsführung" },
+  { id: "bauleitung", name: "Bauleitung", role: "Baustellenkoordination" },
+  { id: "kolonne-1", name: "Kolonne 1", role: "Baumpflege-Team" },
+  { id: "werkstatt", name: "Werkstatt", role: "Geräte & PSA" },
+  { id: "buero", name: "Büro", role: "Disposition" },
+];
+
+const fullPermissions = permissionAreas.reduce(
+  (permissions, area) => ({ ...permissions, [area.key]: true }),
+  {} as Record<PermissionKey, boolean>,
+);
+
+const initialEmployeePermissions: Record<string, Record<PermissionKey, boolean>> = {
+  helge: fullPermissions,
+  bauleitung: { ...fullPermissions, rechte: false },
+  "kolonne-1": {
+    baustelle: true,
+    gefaehrdung: true,
+    verkehr: true,
+    massnahmen: true,
+    import: false,
+    telefon: true,
+    wiki: true,
+    team: true,
+    aufgaben: true,
+    uebersicht: true,
+    rechte: false,
+  },
+  werkstatt: {
+    baustelle: true,
+    gefaehrdung: false,
+    verkehr: false,
+    massnahmen: true,
+    import: false,
+    telefon: true,
+    wiki: true,
+    team: true,
+    aufgaben: true,
+    uebersicht: false,
+    rechte: false,
+  },
+  buero: {
+    baustelle: true,
+    gefaehrdung: false,
+    verkehr: true,
+    massnahmen: false,
+    import: true,
+    telefon: true,
+    wiki: true,
+    team: true,
+    aufgaben: true,
+    uebersicht: true,
+    rechte: false,
+  },
+};
+
+const tabPermissions: Record<string, PermissionKey> = {
+  baustelle: "baustelle",
+  telefon: "telefon",
+  wiki: "wiki",
+  team: "team",
+  uebersicht: "uebersicht",
+  rechte: "rechte",
+};
+
+const tabItems = [
+  { value: "baustelle", label: "Baustelle" },
+  { value: "telefon", label: "Telefonliste" },
+  { value: "wiki", label: "Wiki" },
+  { value: "team", label: "Teamchat" },
+  { value: "uebersicht", label: "Übersicht" },
+  { value: "rechte", label: "Rechte" },
+];
+
+const LockedPanel = ({ title, description }: { title: string; description: string }) => (
+  <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
+    <CardContent className="flex items-start gap-4 p-6">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#8B252B]/10 text-[#8B252B]">
+        <LockKeyhole className="h-5 w-5" />
+      </div>
+      <div>
+        <h3 className="text-xl font-black text-[#1E1E1F]">{title}</h3>
+        <p className="mt-2 text-sm font-semibold leading-6 text-[#6F7178]">{description}</p>
+      </div>
+    </CardContent>
+  </Card>
+);
 
 const contacts = [
   { name: "Helge Schnirring", role: "Geschäftsführung / Einsatzleitung", phone: "+49 4100 000001", email: "helge.schnirring@firma.de", tags: ["Notfall", "Freigaben"] },
@@ -72,7 +198,7 @@ const treeInspectionSections = [
   },
 ];
 
-const sites = [
+const initialSites: Site[] = [
   {
     id: "site-musterallee",
     name: "Baustelle Musterallee",
@@ -151,11 +277,170 @@ const initialTeamTasks = [
   { id: "task-3", title: "PSA-Set Hubsteigerteam prüfen", owner: "Werkstatt", scope: "Team", priority: "normal" },
 ];
 
+const normalizeColumnName = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]/g, "");
+
+const getImportValue = (row: ImportRow, keys: string[]) => {
+  for (const key of keys) {
+    const value = row[normalizeColumnName(key)];
+    if (value) return value;
+  }
+  return "";
+};
+
+const createSlug = (value: string) =>
+  normalizeColumnName(value)
+    .slice(0, 36)
+    .replace(/^$/, `import${Date.now()}`);
+
+const splitDelimitedLine = (line: string, separator: string) => {
+  const cells: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+    if (char === '"' && nextChar === '"' && inQuotes) {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === separator && !inQuotes) {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  cells.push(cell.trim());
+  return cells;
+};
+
+const parseRowsFromTable = (tableRows: string[][]) => {
+  const filledRows = tableRows.filter((row) => row.some((cell) => cell.trim()));
+  const headers = filledRows[0]?.map(normalizeColumnName) ?? [];
+  return filledRows.slice(1).map((row) =>
+    headers.reduce((entry, header, index) => ({ ...entry, [header]: row[index]?.trim() ?? "" }), {} as ImportRow),
+  );
+};
+
+const parseDelimitedText = (text: string) => {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  const separators = [";", "\t", ","];
+  const separator = separators.reduce((best, candidate) =>
+    splitDelimitedLine(lines[0] ?? "", candidate).length > splitDelimitedLine(lines[0] ?? "", best).length ? candidate : best,
+  );
+  return parseRowsFromTable(lines.map((line) => splitDelimitedLine(line, separator)));
+};
+
+const parseExcelXmlText = (text: string) => {
+  const document = new DOMParser().parseFromString(text, "text/xml");
+  const rows = Array.from(document.getElementsByTagName("Row")).map((row) =>
+    Array.from(row.getElementsByTagName("Data")).map((cell) => cell.textContent?.trim() ?? ""),
+  );
+  return parseRowsFromTable(rows);
+};
+
+const inflateRawText = async (data: Uint8Array) => {
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error("Der Browser kann XLSX-Dateien nicht direkt entpacken. Bitte als CSV exportieren.");
+  }
+  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Response(stream).text();
+};
+
+const unzipXmlFiles = async (buffer: ArrayBuffer) => {
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  const decoder = new TextDecoder();
+  const files: Record<string, string> = {};
+
+  for (let offset = 0; offset < bytes.length - 46; offset += 1) {
+    if (view.getUint32(offset, true) !== 0x02014b50) continue;
+    const method = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const fileNameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+    const fileName = decoder.decode(bytes.slice(offset + 46, offset + 46 + fileNameLength));
+
+    if (fileName.endsWith(".xml") && view.getUint32(localHeaderOffset, true) === 0x04034b50) {
+      const localNameLength = view.getUint16(localHeaderOffset + 26, true);
+      const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
+      const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+      const compressedData = bytes.slice(dataStart, dataStart + compressedSize);
+      files[fileName] = method === 0 ? decoder.decode(compressedData) : await inflateRawText(compressedData);
+    }
+
+    offset += 45 + fileNameLength + extraLength + commentLength;
+  }
+
+  return files;
+};
+
+const parseXlsxBuffer = async (buffer: ArrayBuffer) => {
+  const files = await unzipXmlFiles(buffer);
+  const sheetXml = files["xl/worksheets/sheet1.xml"] ?? Object.entries(files).find(([name]) => name.startsWith("xl/worksheets/sheet"))?.[1];
+  if (!sheetXml) throw new Error("Im XLSX wurde kein Tabellenblatt gefunden.");
+
+  const sharedDocument = files["xl/sharedStrings.xml"] ? new DOMParser().parseFromString(files["xl/sharedStrings.xml"], "text/xml") : null;
+  const sharedStrings = sharedDocument
+    ? Array.from(sharedDocument.getElementsByTagName("si")).map((item) => Array.from(item.getElementsByTagName("t")).map((textNode) => textNode.textContent ?? "").join(""))
+    : [];
+
+  const sheetDocument = new DOMParser().parseFromString(sheetXml, "text/xml");
+  const rows = Array.from(sheetDocument.getElementsByTagName("row")).map((row) => {
+    const cells: string[] = [];
+    Array.from(row.getElementsByTagName("c")).forEach((cell) => {
+      const reference = cell.getAttribute("r") ?? "A1";
+      const letters = reference.replace(/[0-9]/g, "");
+      const columnIndex = letters.split("").reduce((sum, letter) => sum * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+      const type = cell.getAttribute("t");
+      const rawValue = cell.getElementsByTagName("v")[0]?.textContent ?? "";
+      const inlineValue = cell.getElementsByTagName("t")[0]?.textContent ?? "";
+      cells[columnIndex] = type === "s" ? sharedStrings[Number(rawValue)] ?? "" : type === "inlineStr" ? inlineValue : rawValue;
+    });
+    return cells;
+  });
+
+  return parseRowsFromTable(rows);
+};
+
+const readTextFile = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden."));
+    reader.readAsText(file, "utf-8");
+  });
+
+const readBufferFile = (file: File) =>
+  new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden."));
+    reader.readAsArrayBuffer(file);
+  });
+
 const Index = () => {
+  const [sites, setSites] = useState<Site[]>(initialSites);
   const [activeTab, setActiveTab] = useState("baustelle");
-  const [activeSiteId, setActiveSiteId] = useState(sites[0].id);
-  const [openTreeKey, setOpenTreeKey] = useState(`${sites[0].id}-${sites[0].trees[0].number}`);
-  const [openTreeToolKey, setOpenTreeToolKey] = useState(`${sites[0].id}-${sites[0].trees[0].number}-lift`);
+  const [activeSiteId, setActiveSiteId] = useState(initialSites[0].id);
+  const [openTreeKey, setOpenTreeKey] = useState(`${initialSites[0].id}-${initialSites[0].trees[0].number}`);
+  const [openTreeToolKey, setOpenTreeToolKey] = useState(`${initialSites[0].id}-${initialSites[0].trees[0].number}-lift`);
+  const [activeEmployeeId, setActiveEmployeeId] = useState(employees[0].id);
+  const [employeePermissions, setEmployeePermissions] = useState(initialEmployeePermissions);
+  const [importFeedback, setImportFeedback] = useState("Noch keine Datei importiert.");
   const [contactQuery, setContactQuery] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
   const [chatScope, setChatScope] = useState("site-musterallee");
@@ -183,7 +468,27 @@ const Index = () => {
     "hvz-4": { start: "07:00", end: "15:00", installed: false, removed: false },
   });
 
+  const activeEmployee = employees.find((employee) => employee.id === activeEmployeeId) ?? employees[0];
+  const canAccess = (permission: PermissionKey) => employeePermissions[activeEmployeeId]?.[permission] ?? false;
   const activeSite = sites.find((site) => site.id === activeSiteId) ?? sites[0];
+
+  const dashboardStats = [
+    { label: "Baustellen", value: String(sites.length), icon: HardHat },
+    { label: "Bäume", value: String(sites.reduce((sum, site) => sum + site.trees.length, 0)), icon: TreePine },
+    { label: "Kontakte", value: String(contacts.length), icon: UsersRound },
+    { label: "offene Prüfungen", value: "11", icon: ClipboardCheck },
+  ];
+
+  useEffect(() => {
+    if (!canAccess(tabPermissions[activeTab])) {
+      const firstAllowedTab = tabItems.find((tab) => canAccess(tabPermissions[tab.value]));
+      setActiveTab(firstAllowedTab?.value ?? "baustelle");
+    }
+  }, [activeEmployeeId, employeePermissions, activeTab]);
+
+  const selectTab = (tab: string) => {
+    if (canAccess(tabPermissions[tab])) setActiveTab(tab);
+  };
 
   const filteredContacts = useMemo(() => {
     const query = contactQuery.toLowerCase();
@@ -236,7 +541,7 @@ const Index = () => {
     if (!text) return;
     setMessages((current) => [
       ...current,
-      { id: `msg-${Date.now()}`, scope: chatScope, author: "Ich", time: "jetzt", text },
+      { id: `msg-${Date.now()}`, scope: chatScope, author: activeEmployee.name, time: "jetzt", text },
     ]);
     setNewMessage("");
   };
@@ -246,10 +551,132 @@ const Index = () => {
     if (!title) return;
     const scope = chatScope === "team" ? "Team" : sites.find((site) => site.id === chatScope)?.name ?? "Team";
     setTeamTaskItems((current) => [
-      { id: `task-${Date.now()}`, title, owner: "Ich", scope, priority: "normal" },
+      { id: `task-${Date.now()}`, title, owner: activeEmployee.name, scope, priority: "normal" },
       ...current,
     ]);
     setNewTaskTitle("");
+  };
+
+  const importRowsIntoSites = (rows: ImportRow[]) => {
+    let importedTrees = 0;
+    let importedMeasures = 0;
+    let firstImportedSiteId = "";
+    let firstImportedTreeNumber = "";
+    const importedParkingDocs: Record<string, { start: string; end: string; installed: boolean; removed: boolean }> = {};
+
+    setSites((currentSites) => {
+      const nextSites: Site[] = currentSites.map((site) => ({
+        ...site,
+        noParkingZones: site.noParkingZones.map((zone) => ({ ...zone })),
+        trees: site.trees.map((tree) => ({ ...tree, measures: tree.measures.map((measure) => ({ ...measure })) })),
+      }));
+
+      rows.forEach((row, rowIndex) => {
+        const siteName = getImportValue(row, ["Baustelle", "Baustellenname", "Projekt"]) || activeSite.name;
+        const siteAddress = getImportValue(row, ["Adresse", "Anschrift"]) || activeSite.address;
+        const siteId = nextSites.find((site) => site.name === siteName || site.address === siteAddress)?.id ?? `site-${createSlug(`${siteName}-${siteAddress}`)}`;
+        let site = nextSites.find((item) => item.id === siteId);
+
+        if (!site) {
+          site = {
+            id: siteId,
+            name: siteName.startsWith("Baustelle") ? siteName : `Baustelle ${siteName}`,
+            address: siteAddress,
+            date: getImportValue(row, ["Termin", "Datum", "Zeit"]) || "Importiert · Termin offen",
+            status: getImportValue(row, ["Status"]) || "importiert",
+            crew: getImportValue(row, ["Kolonne", "Team", "Crew"]) || "noch zuweisen",
+            noParkingZones: [],
+            trees: [],
+          };
+          nextSites.push(site);
+        }
+
+        firstImportedSiteId ||= site.id;
+
+        const noParkingTitle = getImportValue(row, ["Halteverbot", "HVZ", "Halteverbot Titel"]);
+        if (noParkingTitle && !site.noParkingZones.some((zone) => zone.title === noParkingTitle)) {
+          const zoneId = `hvz-${Date.now()}-${rowIndex}`;
+          site.noParkingZones.push({
+            id: zoneId,
+            title: noParkingTitle,
+            location: getImportValue(row, ["HVZ Standort", "Halteverbot Standort", "HVZ Lage"]) || site.address,
+            length: getImportValue(row, ["HVZ Länge", "Laenge", "Länge"]) || "offen",
+          });
+          importedParkingDocs[zoneId] = { start: "", end: "", installed: false, removed: false };
+        }
+
+        const treeNumber = getImportValue(row, ["Baumnummer", "Baum Nr", "Baum", "Nr"]) || `B-IMP-${rowIndex + 1}`;
+        let tree = site.trees.find((item) => item.number === treeNumber);
+        if (!tree) {
+          tree = {
+            number: treeNumber,
+            species: getImportValue(row, ["Baumart", "Art", "Species"]) || "Baumart offen",
+            location: getImportValue(row, ["Standort", "Baumstandort", "Lage"]) || site.address,
+            measures: [],
+          };
+          site.trees.push(tree);
+          importedTrees += 1;
+        }
+        firstImportedTreeNumber ||= tree.number;
+
+        const measureTitle = getImportValue(row, ["Maßnahme", "Massnahme", "Arbeit", "Arbeiten", "Aufgabe"]);
+        if (measureTitle) {
+          tree.measures.push({
+            id: `imp-${Date.now()}-${rowIndex}-${tree.measures.length}`,
+            title: measureTitle,
+            assignedTo: getImportValue(row, ["Zuständig", "Zustaendig", "Mitarbeiter", "Team", "Kolonne"]) || "noch zuweisen",
+            note: getImportValue(row, ["Notiz", "Hinweis", "Bemerkung"]) || "Aus Excel importiert.",
+          });
+          importedMeasures += 1;
+        }
+      });
+
+      return nextSites;
+    });
+
+    if (Object.keys(importedParkingDocs).length) {
+      setNoParkingDocs((current) => ({ ...current, ...importedParkingDocs }));
+    }
+
+    if (firstImportedSiteId) {
+      setActiveSiteId(firstImportedSiteId);
+      setChatScope(firstImportedSiteId);
+      setOpenTreeKey(`${firstImportedSiteId}-${firstImportedTreeNumber}`);
+      setOpenTreeToolKey(`${firstImportedSiteId}-${firstImportedTreeNumber}-lift`);
+      setActiveTab("baustelle");
+    }
+
+    return { importedTrees, importedMeasures };
+  };
+
+  const handleImportFile = async (file: File | undefined) => {
+    if (!file || !canAccess("import")) return;
+
+    try {
+      const fileName = file.name.toLowerCase();
+      const rows = fileName.endsWith(".xlsx")
+        ? await parseXlsxBuffer(await readBufferFile(file))
+        : fileName.endsWith(".xml") || fileName.endsWith(".xls")
+          ? parseExcelXmlText(await readTextFile(file))
+          : parseDelimitedText(await readTextFile(file));
+
+      const usableRows = rows.filter((row) => Object.values(row).some(Boolean));
+      if (!usableRows.length) throw new Error("Keine auswertbaren Zeilen gefunden.");
+      const result = importRowsIntoSites(usableRows);
+      setImportFeedback(`${usableRows.length} Zeilen verarbeitet · ${result.importedTrees} neue Bäume · ${result.importedMeasures} Maßnahmen importiert.`);
+    } catch (error) {
+      setImportFeedback(error instanceof Error ? error.message : "Der Import konnte nicht verarbeitet werden.");
+    }
+  };
+
+  const togglePermission = (employeeId: string, permission: PermissionKey, checked: boolean) => {
+    setEmployeePermissions((current) => ({
+      ...current,
+      [employeeId]: {
+        ...current[employeeId],
+        [permission]: checked,
+      },
+    }));
   };
 
   return (
@@ -266,9 +693,21 @@ const Index = () => {
               <p className="hidden text-sm font-semibold text-[#6F7178] sm:block">Baumpflege · Garten- und Landschaftsbau</p>
             </div>
           </div>
-          <Button className="rounded-full bg-[#8B252B] px-4 text-white shadow-md shadow-[#8B252B]/20 hover:bg-[#741E24]">
-            <Phone className="mr-2 h-4 w-4" /> Notfall
-          </Button>
+          <div className="flex items-center gap-2">
+            <label className="hidden text-xs font-black uppercase tracking-[0.16em] text-[#8B252B] md:block">Zugriff</label>
+            <select
+              value={activeEmployeeId}
+              onChange={(event) => setActiveEmployeeId(event.target.value)}
+              className="h-11 rounded-full border border-[#E2DAD5] bg-[#F8F6F3] px-3 text-sm font-bold text-[#1E1E1F] outline-none focus:border-[#8B252B]"
+            >
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>{employee.name}</option>
+              ))}
+            </select>
+            <Button className="rounded-full bg-[#8B252B] px-4 text-white shadow-md shadow-[#8B252B]/20 hover:bg-[#741E24]">
+              <Phone className="mr-2 h-4 w-4" /> Notfall
+            </Button>
+          </div>
         </header>
 
         <section className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
@@ -287,17 +726,17 @@ const Index = () => {
               </div>
               <div className="relative max-w-2xl">
                 <Badge className="rounded-full bg-[#8B252B] px-4 py-1 text-white hover:bg-[#8B252B]">baum gut · garten gut · einfach gute gärten</Badge>
-                <h2 className="mt-6 text-4xl font-black tracking-tight sm:text-6xl">Baustellen sicher planen, prüfen und abarbeiten.</h2>
+                <h2 className="mt-6 text-4xl font-black tracking-tight sm:text-6xl">Baustellen sicher planen, prüfen und per Excel befüllen.</h2>
                 <p className="mt-5 max-w-xl text-base leading-8 text-[#D7D7DA]">
-                  Jede Baustelle enthält ihre eigene Gefährdungsbeurteilung, Verkehrs- und Halteverbotsdokumentation sowie alle Baummaßnahmen mit Hubsteiger- und Habitatskontrolle.
+                  Baumarbeiten können je Baustelle aus Excel importiert werden. Zusätzlich steuert die Rechtematrix, welche Mitarbeiter Gefährdung, Verkehr, Maßnahmen, Chat oder Verwaltung sehen und bearbeiten dürfen.
                 </p>
                 <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                  <Button onClick={() => setActiveTab("baustelle")} className="h-12 rounded-full bg-[#8B252B] px-6 text-white hover:bg-[#741E24]">Baustelle öffnen</Button>
-                  <Button onClick={() => setActiveTab("uebersicht")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
+                  <Button onClick={() => selectTab("baustelle")} className="h-12 rounded-full bg-[#8B252B] px-6 text-white hover:bg-[#741E24]">Baustelle öffnen</Button>
+                  <Button onClick={() => selectTab("uebersicht")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
                     Baustellenübersicht
                   </Button>
-                  <Button onClick={() => setActiveTab("team")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
-                    Teamchat
+                  <Button onClick={() => selectTab("rechte")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
+                    Rechte verwalten
                   </Button>
                 </div>
               </div>
@@ -305,7 +744,7 @@ const Index = () => {
           </Card>
 
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            {stats.map((stat) => (
+            {dashboardStats.map((stat) => (
               <Card key={stat.label} className="rounded-[1.75rem] border-white/70 bg-white/90 shadow-lg shadow-[#3B1115]/10">
                 <CardContent className="p-4 sm:p-5">
                   <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#8B252B]/10 text-[#8B252B]">
@@ -319,13 +758,21 @@ const Index = () => {
           </div>
         </section>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="relative">
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-[1.75rem] bg-[#E8E5E1] p-2 md:grid-cols-5">
-            <TabsTrigger value="baustelle" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Baustelle</TabsTrigger>
-            <TabsTrigger value="telefon" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Telefonliste</TabsTrigger>
-            <TabsTrigger value="wiki" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Wiki</TabsTrigger>
-            <TabsTrigger value="team" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Teamchat</TabsTrigger>
-            <TabsTrigger value="uebersicht" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Übersicht</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={selectTab} className="relative">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-[1.75rem] bg-[#E8E5E1] p-2 md:grid-cols-6">
+            {tabItems.map((tab) => {
+              const allowed = canAccess(tabPermissions[tab.value]);
+              return (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  disabled={!allowed}
+                  className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {tab.label}
+                </TabsTrigger>
+              );
+            })}
           </TabsList>
 
           <TabsContent value="baustelle" className="mt-5">
@@ -333,9 +780,36 @@ const Index = () => {
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
                 <CardHeader>
                   <CardTitle className="text-2xl font-black">Baustellen</CardTitle>
-                  <p className="text-sm font-semibold text-[#6F7178]">Wähle eine Baustelle aus. Alle Prüfungen und Baummaßnahmen gehören zur gewählten Baustelle.</p>
+                  <p className="text-sm font-semibold text-[#6F7178]">Wähle eine Baustelle aus oder importiere Baumarbeiten aus Excel. Unterstützt werden .xlsx, .csv und Excel-XML mit Spalten wie Baustelle, Adresse, Baumnummer, Baumart, Standort, Maßnahme, Zuständig und Notiz.</p>
                 </CardHeader>
                 <CardContent className="grid gap-3">
+                  <div className="rounded-[1.5rem] border border-dashed border-[#8B252B]/35 bg-[#FFF7F6] p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#8B252B] text-white">
+                        <FileSpreadsheet className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-black text-[#1E1E1F]">Excel-Import für Baumarbeiten</p>
+                        <p className="mt-1 text-sm font-semibold leading-6 text-[#6F7178]">{importFeedback}</p>
+                        {canAccess("import") ? (
+                          <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#8B252B] px-4 py-2 text-sm font-black text-white shadow-md shadow-[#8B252B]/20 hover:bg-[#741E24]">
+                            <Upload className="h-4 w-4" /> Datei auswählen
+                            <input
+                              type="file"
+                              accept=".xlsx,.xls,.xml,.csv,.tsv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                              className="sr-only"
+                              onChange={(event) => {
+                                void handleImportFile(event.target.files?.[0]);
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                        ) : (
+                          <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-bold text-[#8B252B]">Für diesen Mitarbeiter ist der Excel-Import gesperrt.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                   {sites.map((site) => {
                     const statsForSite = getSiteMeasureStats(site);
                     const isActive = activeSite.id === site.id;
@@ -381,24 +855,27 @@ const Index = () => {
                   </CardHeader>
                 </Card>
 
-                <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-3 text-2xl font-black"><ShieldCheck className="h-6 w-6 text-[#8B252B]" /> Gefährdungsbeurteilung</CardTitle>
-                    <p className="text-sm font-semibold text-[#6F7178]">Diese Gefährdungsbeurteilung gehört einmal zu dieser Baustelle.</p>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 sm:grid-cols-2">
-                    {riskItems.map((item, index) => {
-                      const id = `${activeSite.id}-risk-${index}`;
-                      return (
-                        <label key={id} className="flex cursor-pointer items-start gap-3 rounded-[1.15rem] bg-[#F8F6F3] p-3 text-sm font-semibold leading-5 text-[#303033] transition hover:bg-[#F1ECE8]">
-                          <Checkbox checked={Boolean(riskChecks[id])} onCheckedChange={(checked) => setRiskChecks((current) => ({ ...current, [id]: checked === true }))} className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
-                          <span>{item}</span>
-                        </label>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
+                {canAccess("gefaehrdung") ? (
+                  <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-3 text-2xl font-black"><ShieldCheck className="h-6 w-6 text-[#8B252B]" /> Gefährdungsbeurteilung</CardTitle>
+                      <p className="text-sm font-semibold text-[#6F7178]">Diese Gefährdungsbeurteilung gehört einmal zu dieser Baustelle.</p>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 sm:grid-cols-2">
+                      {riskItems.map((item, index) => {
+                        const id = `${activeSite.id}-risk-${index}`;
+                        return (
+                          <label key={id} className="flex cursor-pointer items-start gap-3 rounded-[1.15rem] bg-[#F8F6F3] p-3 text-sm font-semibold leading-5 text-[#303033] transition hover:bg-[#F1ECE8]">
+                            <Checkbox checked={Boolean(riskChecks[id])} onCheckedChange={(checked) => setRiskChecks((current) => ({ ...current, [id]: checked === true }))} className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                            <span>{item}</span>
+                          </label>
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
+                ) : <LockedPanel title="Gefährdungsbeurteilung gesperrt" description="Der ausgewählte Mitarbeiter darf diesen Bereich nicht sehen oder bearbeiten." />}
 
+                {canAccess("verkehr") ? (
                 <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-3 text-2xl font-black"><Siren className="h-6 w-6 text-[#8B252B]" /> Verkehr & Halteverbote</CardTitle>
@@ -443,7 +920,9 @@ const Index = () => {
                     })}
                   </CardContent>
                 </Card>
+                ) : <LockedPanel title="Verkehr & Halteverbote gesperrt" description="Der ausgewählte Mitarbeiter hat keinen Zugriff auf die Verkehrsdokumentation dieser Baustelle." />}
 
+                {canAccess("massnahmen") ? (
                 <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-3 text-2xl font-black"><TreePine className="h-6 w-6 text-[#8B252B]" /> Maßnahmen je Baum</CardTitle>
@@ -551,6 +1030,7 @@ const Index = () => {
                     })}
                   </CardContent>
                 </Card>
+                ) : <LockedPanel title="Maßnahmen je Baum gesperrt" description="Der ausgewählte Mitarbeiter darf Baumarbeiten und Prüfpunkte nicht bearbeiten." />}
               </div>
             </div>
           </TabsContent>
@@ -631,7 +1111,7 @@ const Index = () => {
                 <CardContent className="space-y-4">
                   <div className="max-h-[460px] space-y-3 overflow-y-auto rounded-[1.5rem] bg-[#F8F6F3] p-3">
                     {visibleMessages.map((message) => (
-                      <article key={message.id} className={message.author === "Ich" ? "ml-auto max-w-[88%] rounded-[1.25rem] bg-[#8B252B] p-4 text-white" : "max-w-[88%] rounded-[1.25rem] bg-white p-4 shadow-sm"}>
+                      <article key={message.id} className={message.author === activeEmployee.name ? "ml-auto max-w-[88%] rounded-[1.25rem] bg-[#8B252B] p-4 text-white" : "max-w-[88%] rounded-[1.25rem] bg-white p-4 shadow-sm"}>
                         <div className="mb-1 flex items-center justify-between gap-3 text-xs font-black uppercase tracking-[0.14em] opacity-80">
                           <span>{message.author}</span>
                           <span>{message.time}</span>
@@ -647,6 +1127,7 @@ const Index = () => {
                 </CardContent>
               </Card>
 
+              {canAccess("aufgaben") ? (
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-3 text-2xl font-black"><ListChecks className="h-6 w-6 text-[#8B252B]" /> Teamaufgaben</CardTitle>
@@ -675,7 +1156,51 @@ const Index = () => {
                   })}
                 </CardContent>
               </Card>
+              ) : <LockedPanel title="Teamaufgaben gesperrt" description="Dieser Mitarbeiter darf Aufgaben nicht anlegen oder abhaken." />}
             </div>
+          </TabsContent>
+
+          <TabsContent value="rechte" className="mt-5">
+            {canAccess("rechte") ? (
+              <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-3 text-2xl font-black"><UserCog className="h-6 w-6 text-[#8B252B]" /> Zugriffsrechte je Mitarbeiter</CardTitle>
+                  <p className="text-sm font-semibold text-[#6F7178]">Lege fest, welche Bereiche einzelne Mitarbeiter sehen oder bearbeiten dürfen. Die Auswahl oben simuliert den aktuell angemeldeten Mitarbeiter.</p>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  {employees.map((employee) => (
+                    <article key={employee.id} className="rounded-[1.75rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4">
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-xl font-black text-[#1E1E1F]">{employee.name}</h3>
+                          <p className="text-sm font-semibold text-[#6F7178]">{employee.role}</p>
+                        </div>
+                        <Badge className="rounded-full bg-white text-[#5A1B20] hover:bg-white">{permissionAreas.filter((area) => employeePermissions[employee.id]?.[area.key]).length}/{permissionAreas.length} Rechte</Badge>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {permissionAreas.map((area) => {
+                          const isProtectedSelfLock = employee.id === activeEmployeeId && area.key === "rechte";
+                          return (
+                            <label key={area.key} className="flex cursor-pointer items-start gap-3 rounded-[1.15rem] bg-white p-3 text-sm font-semibold leading-5 text-[#303033] shadow-sm">
+                              <Checkbox
+                                checked={Boolean(employeePermissions[employee.id]?.[area.key])}
+                                disabled={isProtectedSelfLock}
+                                onCheckedChange={(checked) => togglePermission(employee.id, area.key, checked === true)}
+                                className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B] disabled:opacity-40"
+                              />
+                              <span>
+                                <span className="block font-black">{area.label}</span>
+                                <span className="mt-1 block text-xs font-semibold text-[#6F7178]">{area.description}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </article>
+                  ))}
+                </CardContent>
+              </Card>
+            ) : <LockedPanel title="Rechteverwaltung gesperrt" description="Dieser Bereich kann nur von Mitarbeitern mit dem Recht „Rechte verwalten“ geöffnet werden." />}
           </TabsContent>
 
           <TabsContent value="uebersicht" className="mt-5">
