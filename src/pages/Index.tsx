@@ -11,10 +11,13 @@ import {
   FileText,
   HardHat,
   Leaf,
+  ListChecks,
   Mail,
   MapPin,
+  MessageSquare,
   Phone,
   Search,
+  Send,
   ShieldCheck,
   Siren,
   TreePine,
@@ -136,6 +139,18 @@ const stats = [
   { label: "offene Prüfungen", value: "11", icon: ClipboardCheck },
 ];
 
+const initialMessages = [
+  { id: "msg-1", scope: "site-musterallee", author: "Bauleitung", time: "07:18", text: "Musterallee: VAO liegt vor, bitte Halteverbote vor Arbeitsbeginn fotografieren." },
+  { id: "msg-2", scope: "site-musterallee", author: "Kolonne 1", time: "07:42", text: "B-014 ist abgesperrt. Wir starten mit Totholz über dem Gehweg." },
+  { id: "msg-3", scope: "team", author: "Werkstatt", time: "08:05", text: "Hubsteiger 2 ist einsatzbereit, Schlüssel liegt im Gerätefach." },
+];
+
+const initialTeamTasks = [
+  { id: "task-1", title: "Fotos Halteverbot Musterallee hochladen", owner: "Kolonne 1", scope: "Baustelle Musterallee", priority: "hoch" },
+  { id: "task-2", title: "Rückfrage Kunde Innenhofanlage beantworten", owner: "Büro", scope: "Baustelle Innenhofanlage", priority: "mittel" },
+  { id: "task-3", title: "PSA-Set Hubsteigerteam prüfen", owner: "Werkstatt", scope: "Team", priority: "normal" },
+];
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState("baustelle");
   const [activeSiteId, setActiveSiteId] = useState(sites[0].id);
@@ -143,6 +158,14 @@ const Index = () => {
   const [openTreeToolKey, setOpenTreeToolKey] = useState(`${sites[0].id}-${sites[0].trees[0].number}-lift`);
   const [contactQuery, setContactQuery] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
+  const [chatScope, setChatScope] = useState("site-musterallee");
+  const [newMessage, setNewMessage] = useState("");
+  const [messages, setMessages] = useState(initialMessages);
+  const [teamTaskItems, setTeamTaskItems] = useState(initialTeamTasks);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [taskChecks, setTaskChecks] = useState<Record<string, boolean>>({
+    "task-2": true,
+  });
   const [treeMeasureChecks, setTreeMeasureChecks] = useState<Record<string, boolean>>({
     "b021-1": true,
   });
@@ -200,9 +223,33 @@ const Index = () => {
   const openSite = (siteId: string) => {
     const site = sites.find((item) => item.id === siteId) ?? sites[0];
     setActiveSiteId(site.id);
+    setChatScope(site.id);
     setOpenTreeKey(`${site.id}-${site.trees[0].number}`);
     setOpenTreeToolKey(`${site.id}-${site.trees[0].number}-lift`);
     setActiveTab("baustelle");
+  };
+
+  const visibleMessages = messages.filter((message) => message.scope === chatScope || message.scope === "team");
+
+  const sendMessage = () => {
+    const text = newMessage.trim();
+    if (!text) return;
+    setMessages((current) => [
+      ...current,
+      { id: `msg-${Date.now()}`, scope: chatScope, author: "Ich", time: "jetzt", text },
+    ]);
+    setNewMessage("");
+  };
+
+  const createTask = () => {
+    const title = newTaskTitle.trim();
+    if (!title) return;
+    const scope = chatScope === "team" ? "Team" : sites.find((site) => site.id === chatScope)?.name ?? "Team";
+    setTeamTaskItems((current) => [
+      { id: `task-${Date.now()}`, title, owner: "Ich", scope, priority: "normal" },
+      ...current,
+    ]);
+    setNewTaskTitle("");
   };
 
   return (
@@ -249,6 +296,9 @@ const Index = () => {
                   <Button onClick={() => setActiveTab("uebersicht")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
                     Baustellenübersicht
                   </Button>
+                  <Button onClick={() => setActiveTab("team")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
+                    Teamchat
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -270,10 +320,11 @@ const Index = () => {
         </section>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="relative">
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-[1.75rem] bg-[#E8E5E1] p-2 md:grid-cols-4">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-[1.75rem] bg-[#E8E5E1] p-2 md:grid-cols-5">
             <TabsTrigger value="baustelle" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Baustelle</TabsTrigger>
             <TabsTrigger value="telefon" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Telefonliste</TabsTrigger>
             <TabsTrigger value="wiki" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Wiki</TabsTrigger>
+            <TabsTrigger value="team" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Teamchat</TabsTrigger>
             <TabsTrigger value="uebersicht" className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white">Übersicht</TabsTrigger>
           </TabsList>
 
@@ -562,6 +613,69 @@ const Index = () => {
                 ))}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="team" className="mt-5">
+            <div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
+              <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-3 text-2xl font-black"><MessageSquare className="h-6 w-6 text-[#8B252B]" /> Teamchat</CardTitle>
+                  <p className="text-sm font-semibold text-[#6F7178]">Nachrichten für alle Mitarbeiter oder direkt zur ausgewählten Baustelle.</p>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Button onClick={() => setChatScope("team")} variant={chatScope === "team" ? "default" : "outline"} className={chatScope === "team" ? "rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]" : "rounded-full border-[#8B252B]/25"}>Alle Mitarbeiter</Button>
+                    {sites.map((site) => (
+                      <Button key={site.id} onClick={() => setChatScope(site.id)} variant={chatScope === site.id ? "default" : "outline"} className={chatScope === site.id ? "rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]" : "rounded-full border-[#8B252B]/25"}>{site.name.replace("Baustelle ", "")}</Button>
+                    ))}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="max-h-[460px] space-y-3 overflow-y-auto rounded-[1.5rem] bg-[#F8F6F3] p-3">
+                    {visibleMessages.map((message) => (
+                      <article key={message.id} className={message.author === "Ich" ? "ml-auto max-w-[88%] rounded-[1.25rem] bg-[#8B252B] p-4 text-white" : "max-w-[88%] rounded-[1.25rem] bg-white p-4 shadow-sm"}>
+                        <div className="mb-1 flex items-center justify-between gap-3 text-xs font-black uppercase tracking-[0.14em] opacity-80">
+                          <span>{message.author}</span>
+                          <span>{message.time}</span>
+                        </div>
+                        <p className="text-sm font-semibold leading-6">{message.text}</p>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 rounded-[1.5rem] bg-[#F8F6F3] p-2">
+                    <Input value={newMessage} onChange={(event) => setNewMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") sendMessage(); }} placeholder="Nachricht an Team oder Baustelle schreiben..." className="h-12 rounded-2xl border-0 bg-white text-base" />
+                    <Button onClick={sendMessage} className="h-12 rounded-2xl bg-[#8B252B] px-4 text-white hover:bg-[#741E24]"><Send className="h-5 w-5" /></Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-3 text-2xl font-black"><ListChecks className="h-6 w-6 text-[#8B252B]" /> Teamaufgaben</CardTitle>
+                  <p className="text-sm font-semibold text-[#6F7178]">Aufgaben für Büro, Kolonnen und Werkstatt schnell verteilen und abhaken.</p>
+                </CardHeader>
+                <CardContent className="grid gap-3">
+                  <div className="flex gap-2 rounded-[1.35rem] bg-[#F8F6F3] p-2">
+                    <Input value={newTaskTitle} onChange={(event) => setNewTaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createTask(); }} placeholder="Neue Aufgabe schreiben..." className="h-12 rounded-2xl border-0 bg-white text-base" />
+                    <Button onClick={createTask} className="h-12 rounded-2xl bg-[#8B252B] px-4 text-white hover:bg-[#741E24]">Anlegen</Button>
+                  </div>
+                  {teamTaskItems.map((task) => {
+                    const done = Boolean(taskChecks[task.id]);
+                    return (
+                      <label key={task.id} className={done ? "flex cursor-pointer items-start gap-3 rounded-[1.35rem] border border-[#CFE6D6] bg-[#F0FAF3] p-4" : "flex cursor-pointer items-start gap-3 rounded-[1.35rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4 transition hover:border-[#8B252B]/30"}>
+                        <Checkbox checked={done} onCheckedChange={(checked) => setTaskChecks((current) => ({ ...current, [task.id]: checked === true }))} className="mt-1 h-6 w-6 rounded-lg border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
+                        <span className="min-w-0 flex-1">
+                          <span className={done ? "block font-black text-[#28643E] line-through decoration-2" : "block font-black text-[#1E1E1F]"}>{task.title}</span>
+                          <span className="mt-2 flex flex-wrap gap-2">
+                            <Badge className="rounded-full bg-white text-[#5A1B20] hover:bg-white">{task.owner}</Badge>
+                            <Badge className="rounded-full bg-white text-[#5A1B20] hover:bg-white">{task.scope}</Badge>
+                            <Badge className={task.priority === "hoch" ? "rounded-full bg-[#8B252B] text-white hover:bg-[#8B252B]" : "rounded-full bg-white text-[#5A1B20] hover:bg-white"}>{task.priority}</Badge>
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="uebersicht" className="mt-5">
