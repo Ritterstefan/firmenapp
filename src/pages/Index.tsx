@@ -474,7 +474,7 @@ const Index = () => {
   };
 
   const [sites, setSites] = useState<Site[]>(initialSites);
-  const [activeTab, setActiveTab] = useState("baustelle");
+  const [activeTab, setActiveTab] = useState("start");
   const [activeSiteId, setActiveSiteId] = useState(initialSites[0].id);
   const [openTreeKey, setOpenTreeKey] = useState(`${initialSites[0].id}-${initialSites[0].trees[0].number}`);
   const [openTreeToolKey, setOpenTreeToolKey] = useState(`${initialSites[0].id}-${initialSites[0].trees[0].number}-lift`);
@@ -533,13 +533,6 @@ const Index = () => {
   const visibleSites = sites.filter((site) => canViewSite(site.id));
   const activeSite = visibleSites.find((site) => site.id === activeSiteId) ?? visibleSites[0] ?? sites[0];
 
-  const dashboardStats = [
-    { label: "Baustellen", value: String(sites.length), icon: HardHat },
-    { label: "Bäume", value: String(sites.reduce((sum, site) => sum + site.trees.length, 0)), icon: TreePine },
-    { label: "Kontakte", value: String(contacts.length), icon: UsersRound },
-    { label: "offene Prüfungen", value: "11", icon: ClipboardCheck },
-  ];
-
   useEffect(() => {
     setEmployeeDirectory((current) => {
       const withoutCurrentUser = current.filter((employee) => employee.id !== signedInEmployee.id);
@@ -549,9 +542,9 @@ const Index = () => {
   }, [signedInEmployee.id, signedInEmployee.name, signedInEmployee.email]);
 
   useEffect(() => {
-    if (!canAccess(tabPermissions[activeTab])) {
+    if (activeTab !== "start" && !canAccess(tabPermissions[activeTab])) {
       const firstAllowedTab = tabItems.find((tab) => canAccess(tabPermissions[tab.value]));
-      setActiveTab(firstAllowedTab?.value ?? "baustelle");
+      setActiveTab(firstAllowedTab?.value ?? "start");
     }
   }, [signedInEmployee.id, employeePermissions, activeTab]);
 
@@ -864,83 +857,73 @@ const Index = () => {
     });
   };
 
-  return (
-    <main className="min-h-screen bg-[#F5F2EE] text-[#1E1E1F]">
-      <div className="pointer-events-none fixed inset-0 opacity-[0.28] [background-image:radial-gradient(circle_at_15%_20%,rgba(139,37,43,.16),transparent_30%),linear-gradient(120deg,rgba(189,189,194,.35)_1px,transparent_1px)] [background-size:100%_100%,38px_38px]" />
+  const areaCards = [
+    { value: "baustelle", title: "Baustellen", icon: HardHat, count: `${visibleSites.length}` },
+    { value: "team", title: "Chat", icon: MessageSquare, count: `${visibleMessages.length}` },
+    { value: "telefon", title: "Telefon", icon: Phone, count: `${contacts.length}` },
+    { value: "wiki", title: "Wiki", icon: BookOpen, count: `${wikiArticles.length}` },
+    { value: "uebersicht", title: "Übersicht", icon: ClipboardCheck, count: `${activeMeasureStats.done}/${activeMeasureStats.total}` },
+    { value: "rechte", title: "Rechte", icon: UserCog, count: `${employeeDirectory.length}` },
+  ].filter((area) => canAccess(tabPermissions[area.value]));
 
-      <section className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="sticky top-3 z-20 flex items-center justify-between rounded-[2rem] border border-white/70 bg-white/85 px-4 py-3 shadow-lg shadow-[#3B1115]/10 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <img src="/helge-schnirring-logo.svg" alt="Helge Schnirring Logo" className="h-14 w-14 rounded-2xl object-contain shadow-sm" />
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8B252B]">Firmenapp</p>
-              <h1 className="text-base font-black leading-tight sm:text-xl">Helge Schnirring</h1>
-              <p className="hidden text-sm font-semibold text-[#6F7178] sm:block">Baumpflege · Garten- und Landschaftsbau</p>
+  return (
+    <main className="auto-theme min-h-screen bg-background text-foreground">
+      <section className="relative mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
+        <header className="sticky top-3 z-20 flex items-center justify-between rounded-[1.6rem] border border-border bg-card/85 px-3 py-3 shadow-xl shadow-primary/5 backdrop-blur-md sm:px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <img src="/helge-schnirring-logo.svg" alt="Helge Schnirring Logo" className="h-12 w-12 rounded-2xl bg-background object-contain p-1 shadow-sm" />
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-black sm:text-xl">Helge Schnirring</h1>
+              <p className="truncate text-xs font-bold text-muted-foreground">{signedInEmployee.name}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden rounded-full border border-[#E2DAD5] bg-[#F8F6F3] px-4 py-2 text-sm font-bold text-[#1E1E1F] md:block">
-              {signedInEmployee.name}
-            </div>
-            <Button className="rounded-full bg-[#8B252B] px-4 text-white shadow-md shadow-[#8B252B]/20 hover:bg-[#741E24]">
-              <Phone className="mr-2 h-4 w-4" /> Notfall
+            <Button className="h-11 rounded-full bg-primary px-4 text-primary-foreground hover:bg-primary/90">
+              <Phone className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Notfall</span>
             </Button>
-            <Button onClick={() => void signOut()} variant="outline" className="rounded-full border-[#8B252B]/25 bg-white/70 px-4 text-[#8B252B] hover:bg-[#FFF7F6]">
-              <LogOut className="mr-2 h-4 w-4" /> Abmelden
+            <Button onClick={() => void signOut()} variant="outline" className="h-11 rounded-full border-border bg-background px-4 text-foreground hover:bg-secondary">
+              <LogOut className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Abmelden</span>
             </Button>
           </div>
         </header>
 
-        <section className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
-          <Card className="overflow-hidden rounded-[2.25rem] border-0 bg-[#151515] text-white shadow-2xl shadow-[#3B1115]/20">
-            <CardContent className="relative p-6 sm:p-8">
-              <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full border-[36px] border-[#8B252B]/45" />
-              <div className="absolute bottom-6 right-8 hidden h-44 w-44 rounded-[3rem] border border-white/10 bg-white/5 p-5 md:block">
-                <div className="h-full rounded-[2rem] bg-[#8B252B]/25 p-4">
-                  <TreePine className="h-14 w-14 text-[#BDBDC2]" />
-                  <div className="mt-5 space-y-2">
-                    <div className="h-2 rounded-full bg-white/70" />
-                    <div className="h-2 w-2/3 rounded-full bg-[#8B252B]" />
-                    <div className="h-2 w-4/5 rounded-full bg-white/30" />
-                  </div>
-                </div>
+        <Card className="rounded-[2rem] border-border bg-card/90 shadow-2xl shadow-primary/5">
+          <CardContent className="p-5 sm:p-7">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.2em] text-primary">Start</p>
+                <h2 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">Bereiche</h2>
               </div>
-              <div className="relative max-w-2xl">
-                <Badge className="rounded-full bg-[#8B252B] px-4 py-1 text-white hover:bg-[#8B252B]">baum gut · garten gut · einfach gute gärten</Badge>
-                <h2 className="mt-6 text-4xl font-black tracking-tight sm:text-6xl">Baustellen sicher planen, prüfen und per Excel befüllen.</h2>
-                <p className="mt-5 max-w-xl text-base leading-8 text-[#D7D7DA]">
-                  Baumarbeiten können je Baustelle aus Excel importiert werden. Zusätzlich steuert die Rechtematrix, welche Mitarbeiter Gefährdung, Verkehr, Maßnahmen, Chat oder Verwaltung sehen und bearbeiten dürfen.
-                </p>
-                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                  <Button onClick={() => selectTab("baustelle")} className="h-12 rounded-full bg-[#8B252B] px-6 text-white hover:bg-[#741E24]">Baustelle öffnen</Button>
-                  <Button onClick={() => selectTab("uebersicht")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
-                    Baustellenübersicht
-                  </Button>
-                  <Button onClick={() => selectTab("rechte")} variant="outline" className="h-12 rounded-full border-white/30 bg-white/10 px-6 text-white hover:bg-white hover:text-[#1E1E1F]">
-                    Rechte verwalten
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              <Badge className="w-fit rounded-full bg-secondary px-4 py-2 text-secondary-foreground hover:bg-secondary">{visibleSites.length} Baustellen</Badge>
+            </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            {dashboardStats.map((stat) => (
-              <Card key={stat.label} className="rounded-[1.75rem] border-white/70 bg-white/90 shadow-lg shadow-[#3B1115]/10">
-                <CardContent className="p-4 sm:p-5">
-                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#8B252B]/10 text-[#8B252B]">
-                    <stat.icon className="h-5 w-5" />
-                  </div>
-                  <p className="text-3xl font-black text-[#1E1E1F]">{stat.value}</p>
-                  <p className="mt-1 text-sm font-semibold text-[#6F7178]">{stat.label}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {areaCards.map((area) => {
+                const Icon = area.icon;
+                const active = activeTab === area.value;
+                return (
+                  <button
+                    key={area.value}
+                    type="button"
+                    onClick={() => selectTab(area.value)}
+                    className={active ? "group rounded-[1.6rem] border border-primary bg-primary p-4 text-left text-primary-foreground shadow-xl shadow-primary/20 transition" : "group rounded-[1.6rem] border border-border bg-background p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10"}
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <span className={active ? "flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15" : "flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"}>
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className={active ? "rounded-full bg-white/15 px-3 py-1 text-sm font-black" : "rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground"}>{area.count}</span>
+                    </span>
+                    <span className="mt-4 block text-xl font-black">{area.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         <Tabs value={activeTab} onValueChange={selectTab} className="relative">
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-[1.75rem] bg-[#E8E5E1] p-2 md:grid-cols-6">
+          <TabsList className="hidden h-auto w-full grid-cols-2 gap-2 rounded-[1.75rem] bg-secondary p-2 md:grid-cols-6">
             {tabItems.map((tab) => {
               const allowed = canAccess(tabPermissions[tab.value]);
               return (
@@ -948,7 +931,7 @@ const Index = () => {
                   key={tab.value}
                   value={tab.value}
                   disabled={!allowed}
-                  className="rounded-2xl py-3 font-bold data-[state=active]:bg-[#8B252B] data-[state=active]:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-2xl py-3 font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {tab.label}
                 </TabsTrigger>
