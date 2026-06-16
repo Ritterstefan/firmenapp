@@ -64,8 +64,10 @@ type ProfileRow = { id: string; display_name: string | null; role: string | null
 type AppPermissionRow = { user_id: string; permissions: Partial<Record<PermissionKey, boolean>> };
 type SitePermissionRow = { user_id: string; site_id: string; can_view: boolean; can_edit: boolean };
 type ChatPermissionRow = { user_id: string; chat_id: string; can_view: boolean; can_write: boolean };
+type TeamAssignmentRow = { user_id: string; team_id: string };
 type SiteAccess = Record<string, Record<string, { canView: boolean; canEdit: boolean }>>;
 type ChatAccess = Record<string, Record<string, { canView: boolean; canWrite: boolean }>>;
+type TeamAssignments = Record<string, string[]>;
 
 const permissionAreas: { key: PermissionKey; label: string; description: string }[] = [
   { key: "baustelle", label: "Baustellen öffnen", description: "Grunddaten und Baustellenauswahl sehen" },
@@ -98,6 +100,22 @@ const employees: Employee[] = [
   { id: "werkstatt", name: "Werkstatt", role: "Geräte & PSA" },
   { id: "buero", name: "Büro", role: "Disposition" },
 ];
+
+const operationalTeamIds = [
+  "kolonne-1",
+  "kolonne-2",
+  "kolonne-3",
+  "kolonne-4",
+  "kolonne-5",
+  "gartenpflege-1",
+  "gartenpflege-2",
+  "gartenpflege-3",
+  "logistik-hvz",
+  "bewaesserung",
+  "muell",
+];
+
+const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const fullPermissions = permissionAreas.reduce(
   (permissions, area) => ({ ...permissions, [area.key]: true }),
@@ -533,6 +551,7 @@ const Index = () => {
       ...initialSites.reduce((access, site) => ({ ...access, [site.id]: { canView: true, canWrite: true } }), {} as ChatAccess[string]),
     },
   }));
+  const [teamAssignments, setTeamAssignments] = useState<TeamAssignments>({});
   const [importFeedback, setImportFeedback] = useState("Noch keine Datei importiert.");
   const [contactQuery, setContactQuery] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
@@ -568,6 +587,9 @@ const Index = () => {
   });
 
   const activeEmployee = employeeDirectory.find((employee) => employee.id === activeEmployeeId) ?? signedInEmployee;
+  const teamOptions = employees.filter((employee) => operationalTeamIds.includes(employee.id));
+  const assignableEmployees = employeeDirectory.filter((employee) => isUuid(employee.id) && !operationalTeamIds.includes(employee.id));
+  const getAssignedTeamNames = (employeeId: string) => teamOptions.filter((team) => teamAssignments[team.id]?.includes(employeeId)).map((team) => team.name);
   const canAccess = (permission: PermissionKey) => employeePermissions[signedInEmployee.id]?.[permission] ?? false;
   const canEmployeeAccess = (employeeId: string, permission: PermissionKey) => employeePermissions[employeeId]?.[permission] ?? false;
   const canViewSite = (siteId: string) => Boolean(siteAccess[signedInEmployee.id]?.[siteId]?.canView || canAccess("rechte"));
@@ -659,6 +681,14 @@ const Index = () => {
             return next;
           });
         }
+
+        const teamRows = await restRequest<TeamAssignmentRow[]>(session, "team_assignments?select=user_id,team_id");
+        setTeamAssignments(
+          teamRows.reduce((assignments, row) => {
+            assignments[row.team_id] = [...(assignments[row.team_id] ?? []), row.user_id];
+            return assignments;
+          }, {} as TeamAssignments),
+        );
       } catch {
         setEmployeePermissions((current) => ({ ...current, [signedInEmployee.id]: fullPermissions }));
       }
@@ -947,6 +977,34 @@ const Index = () => {
       const nextAccess = field === "canView" && !checked ? { canView: false, canWrite: false } : { ...currentAccess, [field]: checked, canView: field === "canWrite" && checked ? true : currentAccess.canView };
       void persistChatPermission(employeeId, chatId, nextAccess);
       return { ...current, [employeeId]: { ...current[employeeId], [chatId]: nextAccess } };
+    });
+  };
+
+  const persistTeamAssignment = async (teamId: string, employeeId: string, checked: boolean) => {
+    if (!session) return;
+    if (checked) {
+      await restRequest(session, "team_assignments?on_conflict=user_id,team_id", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+        body: JSON.stringify({ user_id: employeeId, team_id: teamId }),
+      }).catch(() => undefined);
+      return;
+    }
+
+    await restRequest(session, `team_assignments?user_id=eq.${employeeId}&team_id=eq.${encodeURIComponent(teamId)}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    }).catch(() => undefined);
+  };
+
+  const toggleTeamAssignment = (teamId: string, employeeId: string, checked: boolean) => {
+    setTeamAssignments((current) => {
+      const assignedEmployees = current[teamId] ?? [];
+      const nextAssignedEmployees = checked
+        ? Array.from(new Set([...assignedEmployees, employeeId]))
+        : assignedEmployees.filter((id) => id !== employeeId);
+      void persistTeamAssignment(teamId, employeeId, checked);
+      return { ...current, [teamId]: nextAssignedEmployees };
     });
   };
 
@@ -1483,12 +1541,68 @@ const Index = () => {
                   <p className="text-sm font-semibold text-[#6F7178]">Lege allgemeine App-Rechte sowie einzelne Baustellen- und Chatfreigaben je Mitarbeiter fest. Die Rechte werden zusätzlich in Supabase gespeichert.</p>
                 </CardHeader>
                 <CardContent className="grid gap-4">
+                  <section className="rounded-[1.75rem] border border-[#E7E0DC] bg-[#FFFDF8] p-4 shadow-sm">
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black uppercase tracking-[0.16em] text-[#8B252B]">Team-Zuweisungen</p>
+                        <h3 className="mt-1 text-xl font-black text-[#1E1E1F]">Mitarbeiter einzelnen Teams zuordnen</h3>
+                        <p className="mt-1 text-sm font-semibold text-[#6F7178]">Setze Haken bei den Mitarbeitern, die zu einer Kolonne oder einem Fachteam gehören sollen.</p>
+                      </div>
+                      <Badge className="rounded-full bg-[#8B252B] text-white hover:bg-[#8B252B]">{teamOptions.length} Teams</Badge>
+                    </div>
+
+                    {assignableEmployees.length ? (
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        {teamOptions.map((team) => {
+                          const assignedEmployees = teamAssignments[team.id] ?? [];
+                          return (
+                            <div key={team.id} className="rounded-[1.35rem] bg-[#F8F6F3] p-3">
+                              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <p className="font-black text-[#1E1E1F]">{team.name}</p>
+                                  <p className="text-xs font-semibold text-[#6F7178]">{team.role}</p>
+                                </div>
+                                <Badge className="rounded-full bg-white text-[#5A1B20] hover:bg-white">{assignedEmployees.length} zugewiesen</Badge>
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {assignableEmployees.map((employee) => (
+                                  <label key={`${team.id}-${employee.id}`} className="flex cursor-pointer items-start gap-2 rounded-2xl bg-white p-3 text-sm font-bold text-[#303033] shadow-sm">
+                                    <Checkbox
+                                      checked={assignedEmployees.includes(employee.id)}
+                                      onCheckedChange={(checked) => toggleTeamAssignment(team.id, employee.id, checked === true)}
+                                      className="mt-0.5 h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]"
+                                    />
+                                    <span className="min-w-0">
+                                      <span className="block truncate">{employee.name}</span>
+                                      <span className="block truncate text-xs font-semibold text-[#6F7178]">{employee.role}</span>
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-[1.35rem] bg-[#F8F6F3] p-4 text-sm font-semibold text-[#6F7178]">
+                        Sobald angemeldete Mitarbeiterprofile vorhanden sind, können sie hier den Teams zugewiesen werden.
+                      </div>
+                    )}
+                  </section>
+
                   {employeeDirectory.map((employee) => (
                     <article key={employee.id} className="rounded-[1.75rem] border border-[#E7E0DC] bg-[#F8F6F3] p-4">
                       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <h3 className="text-xl font-black text-[#1E1E1F]">{employee.name}</h3>
                           <p className="text-sm font-semibold text-[#6F7178]">{employee.role}{employee.email ? ` · ${employee.email}` : ""}</p>
+                          {getAssignedTeamNames(employee.id).length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {getAssignedTeamNames(employee.id).map((teamName) => (
+                                <Badge key={teamName} className="rounded-full bg-white text-[#5A1B20] hover:bg-white">{teamName}</Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <Badge className="rounded-full bg-white text-[#5A1B20] hover:bg-white">{permissionAreas.filter((area) => canEmployeeAccess(employee.id, area.key)).length}/{permissionAreas.length} App-Rechte</Badge>
                       </div>
