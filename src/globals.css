@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 33 28% 95%;
+    --background: 220 14% 94%;
     --foreground: 240 2% 12%;
 
     --card: 0 0% 100%;
@@ -53,10 +53,10 @@
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --background: 222 30% 8%;
+      --background: 220 14% 10%;
       --foreground: 35 24% 94%;
 
-      --card: 222 25% 12%;
+      --card: 220 13% 14%;
       --card-foreground: 35 24% 94%;
 
       --popover: 222 25% 12%;
