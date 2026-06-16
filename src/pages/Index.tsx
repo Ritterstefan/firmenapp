@@ -871,7 +871,9 @@ const Index = () => {
       <section className="relative mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
         <header className="sticky top-3 z-20 flex items-center justify-between rounded-[1.6rem] border border-border bg-card/85 px-3 py-3 shadow-xl shadow-primary/5 backdrop-blur-md sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
-            <img src="/helge-schnirring-logo.svg" alt="Helge Schnirring Logo" className="h-12 w-12 rounded-2xl bg-background object-contain p-1 shadow-sm" />
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.35rem] bg-card p-1.5 shadow-sm sm:h-20 sm:w-20">
+              <img src="/helge-schnirring-logo.svg" alt="Helge Schnirring Baumpflege Garten- und Landschaftsbau" className="h-full w-full object-contain" draggable="false" />
+            </div>
             <div className="min-w-0">
               <h1 className="truncate text-base font-black sm:text-xl">Helge Schnirring</h1>
               <p className="truncate text-xs font-bold text-muted-foreground">{signedInEmployee.name}</p>

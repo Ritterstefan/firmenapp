@@ -41,7 +41,9 @@ const Login = () => {
     <main className="auto-theme flex min-h-screen items-center justify-center bg-background px-4 py-8 text-foreground">
       <section className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <img src="/helge-schnirring-logo.svg" alt="Helge Schnirring Logo" className="h-20 w-20 rounded-[1.6rem] bg-card p-2 shadow-xl shadow-primary/10" />
+          <div className="flex h-40 w-40 items-center justify-center rounded-[2rem] bg-card p-3 shadow-xl shadow-primary/10 sm:h-44 sm:w-44">
+            <img src="/helge-schnirring-logo.svg" alt="Helge Schnirring Baumpflege Garten- und Landschaftsbau" className="h-full w-full object-contain" draggable="false" />
+          </div>
           <p className="mt-5 text-sm font-black uppercase tracking-[0.24em] text-primary">Firmenapp</p>
           <h1 className="mt-2 text-4xl font-black tracking-tight">Willkommen</h1>
         </div>
