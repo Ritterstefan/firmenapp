@@ -917,71 +917,92 @@ const Index = () => {
   const chatChannels = [{ id: "team", title: "Alle Mitarbeiter" }, ...sites.map((site) => ({ id: site.id, title: site.name })), ...chatGroups];
 
   const areaCards = [
-    { value: "baustelle", title: "Baustellen", icon: HardHat, count: `${visibleSites.length}` },
-    { value: "team", title: "Chat", icon: MessageSquare, count: `${chatChannels.filter((channel) => canViewChat(channel.id)).length}` },
-    { value: "telefon", title: "Telefon", icon: Phone, count: `${contacts.length}` },
-    { value: "wiki", title: "Wiki", icon: BookOpen, count: `${wikiArticles.length}` },
-    { value: "uebersicht", title: "Übersicht", icon: ClipboardCheck, count: `${activeMeasureStats.done}/${activeMeasureStats.total}` },
-    { value: "rechte", title: "Rechte", icon: UserCog, count: `${employeeDirectory.length}` },
+    { value: "baustelle", title: "Baustellen", shortTitle: "Bau", icon: HardHat, count: `${visibleSites.length}` },
+    { value: "team", title: "Chat", shortTitle: "Chat", icon: MessageSquare, count: `${chatChannels.filter((channel) => canViewChat(channel.id)).length}` },
+    { value: "telefon", title: "Telefon", shortTitle: "Tel", icon: Phone, count: `${contacts.length}` },
+    { value: "wiki", title: "Wiki", shortTitle: "Wiki", icon: BookOpen, count: `${wikiArticles.length}` },
+    { value: "uebersicht", title: "Übersicht", shortTitle: "Info", icon: ClipboardCheck, count: `${activeMeasureStats.done}/${activeMeasureStats.total}` },
+    { value: "rechte", title: "Rechte", shortTitle: "Admin", icon: UserCog, count: `${employeeDirectory.length}` },
   ].filter((area) => canAccess(tabPermissions[area.value]));
+  const activeArea = areaCards.find((area) => area.value === activeTab);
+  const mobileNavItems = areaCards.filter((area) => ["baustelle", "team", "wiki", "rechte"].includes(area.value)).slice(0, 4);
 
   return (
-    <main className="auto-theme min-h-screen bg-background text-foreground">
-      <section className="relative mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="sticky top-3 z-20 flex items-center justify-between rounded-[1.6rem] border border-border bg-card/85 px-3 py-3 shadow-xl shadow-primary/5 backdrop-blur-md sm:px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.35rem] bg-card p-1.5 shadow-sm sm:h-20 sm:w-20">
+    <main className="auto-theme min-h-screen bg-background pb-24 text-foreground md:pb-0">
+      <section className="relative mx-auto flex w-full max-w-6xl flex-col gap-4 px-3 py-3 sm:px-6 lg:px-8">
+        <header className="sticky top-2 z-20 flex items-center justify-between rounded-[1.4rem] border border-border bg-card/90 px-3 py-2 shadow-xl shadow-primary/5 backdrop-blur-md sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.15rem] bg-card p-1 shadow-sm sm:h-20 sm:w-20 sm:p-1.5">
               <img src="/helge-schnirring-logo.svg" alt="Helge Schnirring Baumpflege Garten- und Landschaftsbau" className="h-full w-full object-contain" draggable="false" />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-base font-black sm:text-xl">Helge Schnirring</h1>
+              <h1 className="truncate text-sm font-black sm:text-xl">Helge Schnirring</h1>
               <p className="truncate text-xs font-bold text-muted-foreground">{signedInEmployee.name}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button className="h-11 rounded-full bg-primary px-4 text-primary-foreground hover:bg-primary/90">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Button className="h-10 rounded-full bg-primary px-3 text-primary-foreground hover:bg-primary/90 sm:h-11 sm:px-4">
               <Phone className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Notfall</span>
             </Button>
-            <Button onClick={() => void signOut()} variant="outline" className="h-11 rounded-full border-border bg-background px-4 text-foreground hover:bg-secondary">
+            <Button onClick={() => void signOut()} variant="outline" className="h-10 rounded-full border-border bg-background px-3 text-foreground hover:bg-secondary sm:h-11 sm:px-4">
               <LogOut className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Abmelden</span>
             </Button>
           </div>
         </header>
 
-        <Card className="rounded-[2rem] border-border bg-card/90 shadow-2xl shadow-primary/5">
-          <CardContent className="p-5 sm:p-7">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-black uppercase tracking-[0.2em] text-primary">Start</p>
-                <h2 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">Bereiche</h2>
+        {activeTab === "start" ? (
+          <Card className="rounded-[1.7rem] border-border bg-card/90 shadow-2xl shadow-primary/5">
+            <CardContent className="p-4 sm:p-7">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Start</p>
+                  <h2 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">Bereiche</h2>
+                </div>
+                <Badge className="rounded-full bg-secondary px-3 py-1.5 text-secondary-foreground hover:bg-secondary">{visibleSites.length} Baustellen</Badge>
               </div>
-              <Badge className="w-fit rounded-full bg-secondary px-4 py-2 text-secondary-foreground hover:bg-secondary">{visibleSites.length} Baustellen</Badge>
-            </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
+                {areaCards.map((area) => {
+                  const Icon = area.icon;
+                  return (
+                    <button key={area.value} type="button" onClick={() => selectTab(area.value)} className="min-h-32 rounded-[1.4rem] border border-border bg-background p-4 text-left shadow-sm transition active:scale-[0.98] hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10">
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></span>
+                        <span className="rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground">{area.count}</span>
+                      </span>
+                      <span className="mt-4 block text-lg font-black sm:text-xl">{area.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="rounded-[1.5rem] border-border bg-card/90 shadow-lg shadow-primary/5">
+            <CardContent className="flex items-center justify-between gap-3 p-3 sm:p-4">
+              <Button onClick={() => setActiveTab("start")} variant="outline" className="h-11 rounded-full border-border bg-background px-4 font-black">Bereiche</Button>
+              <div className="min-w-0 flex-1 text-right">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Aktiv</p>
+                <h2 className="truncate text-xl font-black">{activeArea?.title}</h2>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab !== "start" && (
+          <div className="-mx-3 overflow-x-auto px-3 pb-1 md:hidden">
+            <div className="flex gap-2">
               {areaCards.map((area) => {
                 const Icon = area.icon;
-                const active = activeTab === area.value;
                 return (
-                  <button
-                    key={area.value}
-                    type="button"
-                    onClick={() => selectTab(area.value)}
-                    className={active ? "group rounded-[1.6rem] border border-primary bg-primary p-4 text-left text-primary-foreground shadow-xl shadow-primary/20 transition" : "group rounded-[1.6rem] border border-border bg-background p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10"}
-                  >
-                    <span className="flex items-center justify-between gap-3">
-                      <span className={active ? "flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15" : "flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"}>
-                        <Icon className="h-5 w-5" />
-                      </span>
-                      <span className={active ? "rounded-full bg-white/15 px-3 py-1 text-sm font-black" : "rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground"}>{area.count}</span>
-                    </span>
-                    <span className="mt-4 block text-xl font-black">{area.title}</span>
+                  <button key={area.value} type="button" onClick={() => selectTab(area.value)} className={activeTab === area.value ? "flex shrink-0 items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-black text-primary-foreground" : "flex shrink-0 items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-black text-foreground"}>
+                    <Icon className="h-4 w-4" /> {area.shortTitle}
                   </button>
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={selectTab} className="relative">
           <TabsList className="hidden h-auto w-full grid-cols-2 gap-2 rounded-[1.75rem] bg-secondary p-2 md:grid-cols-6">
@@ -1000,14 +1021,14 @@ const Index = () => {
             })}
           </TabsList>
 
-          <TabsContent value="baustelle" className="mt-5">
-            <div className="grid gap-5 xl:grid-cols-[0.72fr_1.28fr]">
+          <TabsContent value="baustelle" className="mt-3 sm:mt-5">
+            <div className="grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
-                <CardHeader>
+                <CardHeader className="p-4 sm:p-6">
                   <CardTitle className="text-2xl font-black">Baustellen</CardTitle>
-                  <p className="text-sm font-semibold text-[#6F7178]">Wähle eine Baustelle aus oder importiere Baumarbeiten aus Excel. Unterstützt werden .xlsx, .csv und Excel-XML mit Spalten wie Baustelle, Adresse, Baumnummer, Baumart, Standort, Maßnahme, Zuständig und Notiz.</p>
+                  <p className="hidden text-sm font-semibold text-[#6F7178] sm:block">Wähle eine Baustelle aus oder importiere Baumarbeiten aus Excel. Unterstützt werden .xlsx, .csv und Excel-XML.</p>
                 </CardHeader>
-                <CardContent className="grid gap-3">
+                <CardContent className="grid gap-3 p-4 pt-0 sm:p-6 sm:pt-0">
                   <div className="rounded-[1.5rem] border border-dashed border-[#8B252B]/35 bg-[#FFF7F6] p-4">
                     <div className="flex items-start gap-3">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#8B252B] text-white">
@@ -1271,7 +1292,7 @@ const Index = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="telefon" className="mt-5">
+          <TabsContent value="telefon" className="mt-3 sm:mt-5">
             <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
               <CardHeader>
                 <CardTitle className="flex items-center gap-3 text-2xl font-black"><Phone className="h-6 w-6 text-[#8B252B]" /> Telefonliste</CardTitle>
@@ -1303,7 +1324,7 @@ const Index = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="wiki" className="mt-5">
+          <TabsContent value="wiki" className="mt-3 sm:mt-5">
             <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
               <CardHeader>
                 <CardTitle className="flex items-center gap-3 text-2xl font-black"><BookOpen className="h-6 w-6 text-[#8B252B]" /> Wiki & Arbeitshilfen</CardTitle>
@@ -1348,7 +1369,7 @@ const Index = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="team" className="mt-5">
+          <TabsContent value="team" className="mt-3 sm:mt-5">
             <div className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
                 <CardHeader>
@@ -1418,7 +1439,7 @@ const Index = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="rechte" className="mt-5">
+          <TabsContent value="rechte" className="mt-3 sm:mt-5">
             {canAccess("rechte") ? (
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
                 <CardHeader>
@@ -1516,7 +1537,7 @@ const Index = () => {
             ) : <LockedPanel title="Rechteverwaltung gesperrt" description="Dieser Bereich kann nur von Mitarbeitern mit dem Recht „Rechte verwalten“ geöffnet werden." />}
           </TabsContent>
 
-          <TabsContent value="uebersicht" className="mt-5">
+          <TabsContent value="uebersicht" className="mt-3 sm:mt-5">
             <div className="grid gap-5 lg:grid-cols-2">
               {visibleSites.map((site) => {
                 const statsForSite = getSiteMeasureStats(site);
@@ -1550,6 +1571,22 @@ const Index = () => {
           </TabsContent>
         </Tabs>
       </section>
+
+      <nav className="fixed inset-x-3 bottom-3 z-30 rounded-[1.4rem] border border-border bg-card/95 p-2 shadow-2xl shadow-primary/15 backdrop-blur-md md:hidden">
+        <div className="grid grid-cols-5 gap-1">
+          <button type="button" onClick={() => setActiveTab("start")} className={activeTab === "start" ? "flex h-14 flex-col items-center justify-center rounded-2xl bg-primary text-xs font-black text-primary-foreground" : "flex h-14 flex-col items-center justify-center rounded-2xl text-xs font-black text-muted-foreground"}>
+            <TreePine className="mb-1 h-5 w-5" /> Start
+          </button>
+          {mobileNavItems.map((area) => {
+            const Icon = area.icon;
+            return (
+              <button key={area.value} type="button" onClick={() => selectTab(area.value)} className={activeTab === area.value ? "flex h-14 flex-col items-center justify-center rounded-2xl bg-primary text-xs font-black text-primary-foreground" : "flex h-14 flex-col items-center justify-center rounded-2xl text-xs font-black text-muted-foreground"}>
+                <Icon className="mb-1 h-5 w-5" /> {area.shortTitle}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </main>
   );
 };
