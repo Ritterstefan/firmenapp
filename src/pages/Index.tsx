@@ -58,6 +58,8 @@ type PermissionKey = "baustelle" | "gefaehrdung" | "verkehr" | "massnahmen" | "i
 type ImportRow = Record<string, string>;
 
 type Employee = { id: string; name: string; role: string; email?: string };
+type WikiArticle = { title: string; category: string; description: string; updated: string; fileName?: string };
+type ChatGroup = { id: string; title: string };
 type ProfileRow = { id: string; display_name: string | null; role: string | null };
 type AppPermissionRow = { user_id: string; permissions: Partial<Record<PermissionKey, boolean>> };
 type SitePermissionRow = { user_id: string; site_id: string; can_view: boolean; can_edit: boolean };
@@ -176,7 +178,7 @@ const contacts = [
   { name: "Büro / Disposition", role: "Termine, Kunden, Unterlagen", phone: "+49 4100 000005", email: "buero@firma.de", tags: ["Planung", "Dokumente"] },
 ];
 
-const wikiArticles = [
+const initialWikiArticles: WikiArticle[] = [
   { title: "Gefährdungsbeurteilung Baumpflege", category: "Arbeitsschutz", description: "Prüfpunkte für Verkehrsraum, Totholz, Wetter, PSA, Rettungsweg und Maschinenbetrieb.", updated: "Heute" },
   { title: "Betriebsanweisung Hubsteiger", category: "Betriebsanweisungen", description: "Sichtprüfung, Standplatz, Abstützung, Notablass, Korbbelastung und tägliche Dokumentation.", updated: "12.06." },
   { title: "Habitatsbeurteilung vor Schnittarbeiten", category: "Naturschutz", description: "Kontrolle auf Höhlen, Nester, Spaltenquartiere, Fledermäuse und Schutzzeiten.", updated: "10.06." },
@@ -498,6 +500,12 @@ const Index = () => {
   const [importFeedback, setImportFeedback] = useState("Noch keine Datei importiert.");
   const [contactQuery, setContactQuery] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
+  const [wikiArticles, setWikiArticles] = useState<WikiArticle[]>(initialWikiArticles);
+  const [chatGroups, setChatGroups] = useState<ChatGroup[]>([]);
+  const [newChatGroupName, setNewChatGroupName] = useState("");
+  const [newSiteName, setNewSiteName] = useState("");
+  const [newSiteAddress, setNewSiteAddress] = useState("");
+  const [newSiteCrew, setNewSiteCrew] = useState("");
   const [chatScope, setChatScope] = useState("site-musterallee");
   const [newMessage, setNewMessage] = useState("");
   const [messages, setMessages] = useState(initialMessages);
@@ -633,9 +641,9 @@ const Index = () => {
   const filteredArticles = useMemo(() => {
     const query = wikiQuery.toLowerCase();
     return wikiArticles.filter((article) =>
-      [article.title, article.category, article.description].some((value) => value.toLowerCase().includes(query)),
+      [article.title, article.category, article.description, article.fileName ?? ""].some((value) => value.toLowerCase().includes(query)),
     );
-  }, [wikiQuery]);
+  }, [wikiArticles, wikiQuery]);
 
   const getSiteMeasureStats = (site: (typeof sites)[number]) => {
     const total = site.trees.reduce((sum, tree) => sum + tree.measures.length, 0);
@@ -785,7 +793,7 @@ const Index = () => {
   };
 
   const handleImportFile = async (file: File | undefined) => {
-    if (!file || !canAccess("import")) return;
+    if (!file || !(canAccess("import") || canAccess("rechte"))) return;
 
     try {
       const fileName = file.name.toLowerCase();
@@ -802,6 +810,55 @@ const Index = () => {
     } catch (error) {
       setImportFeedback(error instanceof Error ? error.message : "Der Import konnte nicht verarbeitet werden.");
     }
+  };
+
+  const createSite = () => {
+    if (!canAccess("rechte")) return;
+    const name = newSiteName.trim();
+    const address = newSiteAddress.trim();
+    if (!name || !address) return;
+
+    const id = `site-${createSlug(`${name}-${Date.now()}`)}`;
+    const newSite: Site = {
+      id,
+      name: name.startsWith("Baustelle") ? name : `Baustelle ${name}`,
+      address,
+      date: "Neu angelegt · Termin offen",
+      status: "neu",
+      crew: newSiteCrew.trim() || "noch zuweisen",
+      noParkingZones: [],
+      trees: [],
+    };
+
+    setSites((current) => [newSite, ...current]);
+    setSiteAccess((current) => ({ ...current, [signedInEmployee.id]: { ...current[signedInEmployee.id], [id]: { canView: true, canEdit: true } } }));
+    setChatAccess((current) => ({ ...current, [signedInEmployee.id]: { ...current[signedInEmployee.id], [id]: { canView: true, canWrite: true } } }));
+    setActiveSiteId(id);
+    setChatScope(id);
+    setNewSiteName("");
+    setNewSiteAddress("");
+    setNewSiteCrew("");
+    setActiveTab("baustelle");
+  };
+
+  const createChatGroup = () => {
+    if (!canAccess("rechte")) return;
+    const title = newChatGroupName.trim();
+    if (!title) return;
+    const id = `chat-${createSlug(`${title}-${Date.now()}`)}`;
+    setChatGroups((current) => [{ id, title }, ...current]);
+    setChatAccess((current) => ({ ...current, [signedInEmployee.id]: { ...current[signedInEmployee.id], [id]: { canView: true, canWrite: true } } }));
+    setChatScope(id);
+    setNewChatGroupName("");
+  };
+
+  const uploadWikiFile = (file: File | undefined) => {
+    if (!file || !canAccess("rechte")) return;
+    const title = file.name.replace(/\.[^/.]+$/, "");
+    setWikiArticles((current) => [
+      { title, category: "Upload", description: file.name, updated: "Heute", fileName: file.name },
+      ...current,
+    ]);
   };
 
   const persistAppPermission = async (employeeId: string, permissions: Record<PermissionKey, boolean>) => {
@@ -857,9 +914,11 @@ const Index = () => {
     });
   };
 
+  const chatChannels = [{ id: "team", title: "Alle Mitarbeiter" }, ...sites.map((site) => ({ id: site.id, title: site.name })), ...chatGroups];
+
   const areaCards = [
     { value: "baustelle", title: "Baustellen", icon: HardHat, count: `${visibleSites.length}` },
-    { value: "team", title: "Chat", icon: MessageSquare, count: `${visibleMessages.length}` },
+    { value: "team", title: "Chat", icon: MessageSquare, count: `${chatChannels.filter((channel) => canViewChat(channel.id)).length}` },
     { value: "telefon", title: "Telefon", icon: Phone, count: `${contacts.length}` },
     { value: "wiki", title: "Wiki", icon: BookOpen, count: `${wikiArticles.length}` },
     { value: "uebersicht", title: "Übersicht", icon: ClipboardCheck, count: `${activeMeasureStats.done}/${activeMeasureStats.total}` },
@@ -957,7 +1016,7 @@ const Index = () => {
                       <div className="min-w-0 flex-1">
                         <p className="font-black text-[#1E1E1F]">Excel-Import für Baumarbeiten</p>
                         <p className="mt-1 text-sm font-semibold leading-6 text-[#6F7178]">{importFeedback}</p>
-                        {canAccess("import") && canEditSite(activeSite.id) ? (
+                        {(canAccess("import") && canEditSite(activeSite.id)) || canAccess("rechte") ? (
                           <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#8B252B] px-4 py-2 text-sm font-black text-white shadow-md shadow-[#8B252B]/20 hover:bg-[#741E24]">
                             <Upload className="h-4 w-4" /> Datei auswählen
                             <input
@@ -976,6 +1035,17 @@ const Index = () => {
                       </div>
                     </div>
                   </div>
+                  {canAccess("rechte") && (
+                    <div className="rounded-[1.5rem] border border-[#E7E0DC] bg-white p-4">
+                      <p className="mb-3 font-black text-[#1E1E1F]">Baustelle anlegen</p>
+                      <div className="grid gap-2">
+                        <Input value={newSiteName} onChange={(event) => setNewSiteName(event.target.value)} placeholder="Name" className="h-11 rounded-2xl bg-[#F8F6F3]" />
+                        <Input value={newSiteAddress} onChange={(event) => setNewSiteAddress(event.target.value)} placeholder="Adresse" className="h-11 rounded-2xl bg-[#F8F6F3]" />
+                        <Input value={newSiteCrew} onChange={(event) => setNewSiteCrew(event.target.value)} placeholder="Team / Kolonne" className="h-11 rounded-2xl bg-[#F8F6F3]" />
+                        <Button onClick={createSite} className="h-11 rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]">Baustelle erstellen</Button>
+                      </div>
+                    </div>
+                  )}
                   {visibleSites.map((site) => {
                     const statsForSite = getSiteMeasureStats(site);
                     const isActive = activeSite.id === site.id;
@@ -1243,8 +1313,25 @@ const Index = () => {
                 </div>
               </CardHeader>
               <CardContent className="grid gap-3">
+                {canAccess("rechte") && (
+                  <div className="rounded-[1.5rem] border border-dashed border-[#8B252B]/35 bg-[#FFF7F6] p-4">
+                    <p className="font-black text-[#1E1E1F]">Wiki hochladen</p>
+                    <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#8B252B] px-4 py-2 text-sm font-black text-white hover:bg-[#741E24]">
+                      <Upload className="h-4 w-4" /> Datei auswählen
+                      <input
+                        type="file"
+                        className="sr-only"
+                        accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png"
+                        onChange={(event) => {
+                          uploadWikiFile(event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
                 {filteredArticles.map((article) => (
-                  <article key={article.title} className="group flex items-start gap-4 rounded-[1.5rem] border border-[#E7E0DC] bg-white p-4 transition hover:border-[#8B252B]/30 hover:shadow-md">
+                  <article key={`${article.title}-${article.fileName ?? article.updated}`} className="group flex items-start gap-4 rounded-[1.5rem] border border-[#E7E0DC] bg-white p-4 transition hover:border-[#8B252B]/30 hover:shadow-md">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#8B252B]/10 text-[#8B252B]"><FileText className="h-5 w-5" /></div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1266,15 +1353,20 @@ const Index = () => {
               <Card className="rounded-[2rem] border-white/70 bg-white/95 shadow-xl shadow-[#3B1115]/10">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-3 text-2xl font-black"><MessageSquare className="h-6 w-6 text-[#8B252B]" /> Teamchat</CardTitle>
-                  <p className="text-sm font-semibold text-[#6F7178]">Nachrichten für alle Mitarbeiter oder direkt zur ausgewählten Baustelle.</p>
+                  <p className="text-sm font-semibold text-[#6F7178]">Nachrichten für Team, Baustellen oder eigene Gruppen.</p>
                   <div className="flex flex-wrap gap-2 pt-2">
-                    <Button disabled={!canViewChat("team")} onClick={() => setChatScope("team")} variant={chatScope === "team" ? "default" : "outline"} className={chatScope === "team" ? "rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]" : "rounded-full border-[#8B252B]/25"}>Alle Mitarbeiter</Button>
-                    {visibleSites.filter((site) => canViewChat(site.id)).map((site) => (
-                      <Button key={site.id} onClick={() => setChatScope(site.id)} variant={chatScope === site.id ? "default" : "outline"} className={chatScope === site.id ? "rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]" : "rounded-full border-[#8B252B]/25"}>{site.name.replace("Baustelle ", "")}</Button>
+                    {chatChannels.filter((channel) => canViewChat(channel.id)).map((channel) => (
+                      <Button key={channel.id} onClick={() => setChatScope(channel.id)} variant={chatScope === channel.id ? "default" : "outline"} className={chatScope === channel.id ? "rounded-full bg-[#8B252B] text-white hover:bg-[#741E24]" : "rounded-full border-[#8B252B]/25"}>{channel.title.replace("Baustelle ", "")}</Button>
                     ))}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {canAccess("rechte") && (
+                    <div className="flex gap-2 rounded-[1.5rem] bg-[#FFF7F6] p-2">
+                      <Input value={newChatGroupName} onChange={(event) => setNewChatGroupName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createChatGroup(); }} placeholder="Neue Chatgruppe" className="h-11 rounded-2xl border-0 bg-white text-base" />
+                      <Button onClick={createChatGroup} className="h-11 rounded-2xl bg-[#8B252B] px-4 text-white hover:bg-[#741E24]">Erstellen</Button>
+                    </div>
+                  )}
                   <div className="max-h-[460px] space-y-3 overflow-y-auto rounded-[1.5rem] bg-[#F8F6F3] p-3">
                     {visibleMessages.map((message) => (
                       <article key={message.id} className={message.author === activeEmployee.name ? "ml-auto max-w-[88%] rounded-[1.25rem] bg-[#8B252B] p-4 text-white" : "max-w-[88%] rounded-[1.25rem] bg-white p-4 shadow-sm"}>
@@ -1396,11 +1488,11 @@ const Index = () => {
                         <div>
                           <p className="mb-2 text-sm font-black uppercase tracking-[0.16em] text-[#8B252B]">Einzelne Chats</p>
                           <div className="grid gap-2 md:grid-cols-2">
-                            {[{ id: "team", name: "Alle Mitarbeiter" }, ...sites.map((site) => ({ id: site.id, name: site.name }))].map((chat) => {
+                            {chatChannels.map((chat) => {
                               const access = chatAccess[employee.id]?.[chat.id] ?? { canView: false, canWrite: false };
                               return (
                                 <div key={chat.id} className="rounded-[1.15rem] bg-white p-3 shadow-sm">
-                                  <p className="font-black text-[#1E1E1F]">{chat.name}</p>
+                                  <p className="font-black text-[#1E1E1F]">{chat.title}</p>
                                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                                     <label className="flex cursor-pointer items-center gap-2 text-sm font-bold">
                                       <Checkbox checked={access.canView} onCheckedChange={(checked) => toggleChatPermission(employee.id, chat.id, "canView", checked === true)} className="h-5 w-5 rounded-md border-[#8B252B] data-[state=checked]:bg-[#8B252B]" />
