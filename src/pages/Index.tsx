@@ -59,11 +59,13 @@ type ImportRow = Record<string, string>;
 
 type Employee = { id: string; name: string; role: string; email?: string };
 type WikiArticle = { title: string; category: string; description: string; updated: string; fileName?: string };
+type TrafficOrderFile = { name: string; url: string; uploadedBy: string; uploadedAt: string; size: string };
 type ChatGroup = { id: string; title: string };
 type ProfileRow = { id: string; display_name: string | null; role: string | null };
 type AppPermissionRow = { user_id: string; permissions: Partial<Record<PermissionKey, boolean>> };
 type SitePermissionRow = { user_id: string; site_id: string; can_view: boolean; can_edit: boolean };
 type ChatPermissionRow = { user_id: string; chat_id: string; can_view: boolean; can_write: boolean };
+type TrafficOrderRow = { site_id: string; file_name: string; file_data: string; uploaded_by_name: string; file_size: number; updated_at: string | null };
 type TeamAssignmentRow = { user_id: string; team_id: string };
 type SiteAccess = Record<string, Record<string, { canView: boolean; canEdit: boolean }>>;
 type ChatAccess = Record<string, Record<string, { canView: boolean; canWrite: boolean }>>;
@@ -497,6 +499,14 @@ const readBufferFile = (file: File) =>
     reader.readAsArrayBuffer(file);
   });
 
+const readDataUrlFile = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden."));
+    reader.readAsDataURL(file);
+  });
+
 const createInitialSiteAccess = (siteList: Site[], employeeList: Employee[]) =>
   employeeList.reduce((access, employee) => {
     access[employee.id] = siteList.reduce((siteAccess, site) => {
@@ -585,6 +595,8 @@ const Index = () => {
     "hvz-3": { start: "07:15", end: "14:00", installed: false, removed: false },
     "hvz-4": { start: "07:00", end: "15:00", installed: false, removed: false },
   });
+  const [trafficOrderFiles, setTrafficOrderFiles] = useState<Record<string, TrafficOrderFile>>({});
+  const [trafficOrderFeedback, setTrafficOrderFeedback] = useState<Record<string, string>>({});
 
   const activeEmployee = employeeDirectory.find((employee) => employee.id === activeEmployeeId) ?? signedInEmployee;
   const teamOptions = employees.filter((employee) => operationalTeamIds.includes(employee.id));
@@ -598,6 +610,8 @@ const Index = () => {
   const canWriteChat = (chatId: string) => Boolean(chatAccess[signedInEmployee.id]?.[chatId]?.canWrite || canAccess("rechte"));
   const visibleSites = sites.filter((site) => canViewSite(site.id));
   const activeSite = visibleSites.find((site) => site.id === activeSiteId) ?? visibleSites[0] ?? sites[0];
+  const activeTrafficOrder = trafficOrderFiles[activeSite.id];
+  const canUploadTrafficOrder = canEditSite(activeSite.id) && (canAccess("rechte") || canAccess("import") || canAccess("verkehr"));
 
   useEffect(() => {
     setEmployeeDirectory((current) => {
@@ -688,6 +702,20 @@ const Index = () => {
             assignments[row.team_id] = [...(assignments[row.team_id] ?? []), row.user_id];
             return assignments;
           }, {} as TeamAssignments),
+        );
+
+        const trafficRows = await restRequest<TrafficOrderRow[]>(session, "traffic_orders?select=site_id,file_name,file_data,uploaded_by_name,file_size,updated_at");
+        setTrafficOrderFiles(
+          trafficRows.reduce((orders, row) => {
+            orders[row.site_id] = {
+              name: row.file_name,
+              url: row.file_data,
+              uploadedBy: row.uploaded_by_name,
+              uploadedAt: row.updated_at ? new Date(row.updated_at).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "unbekannt",
+              size: `${Math.max(1, Math.round(row.file_size / 1024))} KB`,
+            };
+            return orders;
+          }, {} as Record<string, TrafficOrderFile>),
         );
       } catch {
         setEmployeePermissions((current) => ({ ...current, [signedInEmployee.id]: fullPermissions }));
@@ -925,6 +953,44 @@ const Index = () => {
       { title, category: "Upload", description: file.name, updated: "Heute", fileName: file.name },
       ...current,
     ]);
+  };
+
+  const uploadTrafficOrder = async (file: File | undefined) => {
+    if (!file || !canUploadTrafficOrder) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setTrafficOrderFeedback((current) => ({ ...current, [activeSite.id]: "Die Datei ist zu groß. Bitte maximal 8 MB hochladen." }));
+      return;
+    }
+
+    const fileDataUrl = await readDataUrlFile(file);
+    const order: TrafficOrderFile = {
+      name: file.name,
+      url: fileDataUrl,
+      uploadedBy: activeEmployee.name,
+      uploadedAt: new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }),
+      size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+    };
+
+    setTrafficOrderFiles((current) => ({ ...current, [activeSite.id]: order }));
+    setTrafficOrderFeedback((current) => ({ ...current, [activeSite.id]: "VAO hochgeladen und gespeichert." }));
+
+    if (!session) return;
+    await restRequest(session, "traffic_orders?on_conflict=site_id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({
+        site_id: activeSite.id,
+        file_name: file.name,
+        mime_type: file.type || "application/octet-stream",
+        file_data: fileDataUrl,
+        uploaded_by: isUuid(signedInEmployee.id) ? signedInEmployee.id : null,
+        uploaded_by_name: activeEmployee.name,
+        file_size: file.size,
+        updated_at: new Date().toISOString(),
+      }),
+    }).catch(() => {
+      setTrafficOrderFeedback((current) => ({ ...current, [activeSite.id]: "VAO ist lokal sichtbar, konnte aber nicht gespeichert werden." }));
+    });
   };
 
   const persistAppPermission = async (employeeId: string, permissions: Record<PermissionKey, boolean>) => {
@@ -1233,6 +1299,53 @@ const Index = () => {
                     <p className="text-sm font-semibold text-[#6F7178]">Dieser Punkt gehört einmal zur Baustelle. Jedes Halteverbot wird einzeln mit Anfang und Ende dokumentiert.</p>
                   </CardHeader>
                   <CardContent className="grid gap-3">
+                    <div className="rounded-[1.35rem] border border-[#8B252B]/20 bg-[#FFF7F6] p-4">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-2 font-black text-[#1E1E1F]"><FileText className="h-5 w-5 text-[#8B252B]" /> Verkehrsbehördliche Anordnung</p>
+                          <p className="mt-1 text-sm font-semibold leading-6 text-[#6F7178]">Büro oder Vorarbeiter laden die VAO je Baustelle hoch. Die Kolonne kann die Datei hier direkt öffnen oder herunterladen.</p>
+                        </div>
+                        {canUploadTrafficOrder ? (
+                          <label className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-[#8B252B] px-4 py-2 text-sm font-black text-white shadow-md shadow-[#8B252B]/20 hover:bg-[#741E24]">
+                            <Upload className="h-4 w-4" /> VAO hochladen
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,application/pdf,image/*"
+                              className="sr-only"
+                              onChange={(event) => {
+                                uploadTrafficOrder(event.target.files?.[0]);
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                        ) : (
+                          <Badge className="w-fit rounded-full bg-white text-[#5A1B20] hover:bg-white">nur Ansicht</Badge>
+                        )}
+                      </div>
+
+                      {activeTrafficOrder ? (
+                        <div className="mt-4 rounded-[1.15rem] bg-white p-4 shadow-sm">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="truncate font-black text-[#1E1E1F]">{activeTrafficOrder.name}</p>
+                              <p className="mt-1 text-xs font-semibold text-[#6F7178]">Hochgeladen von {activeTrafficOrder.uploadedBy} · {activeTrafficOrder.uploadedAt} · {activeTrafficOrder.size}</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <a href={activeTrafficOrder.url} target="_blank" rel="noreferrer" className="rounded-full bg-[#F0ECE8] px-4 py-2 text-sm font-black text-[#5A1B20] hover:bg-[#E7E0DC]">Öffnen</a>
+                              <a href={activeTrafficOrder.url} download={activeTrafficOrder.name} className="rounded-full bg-[#8B252B] px-4 py-2 text-sm font-black text-white hover:bg-[#741E24]">Herunterladen</a>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-[1.15rem] bg-white p-4 text-sm font-semibold text-[#6F7178] shadow-sm">
+                          Für diese Baustelle ist noch keine verkehrsbehördliche Anordnung hochgeladen.
+                        </div>
+                      )}
+                      {trafficOrderFeedback[activeSite.id] && (
+                        <p className="mt-3 rounded-2xl bg-white px-4 py-2 text-sm font-black text-[#8B252B]">{trafficOrderFeedback[activeSite.id]}</p>
+                      )}
+                    </div>
+
                     {activeSite.noParkingZones.map((zone) => {
                       const doc = noParkingDocs[zone.id];
                       return (
